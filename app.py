@@ -29,9 +29,11 @@ def close_db(exception=None):
         db.close()
 
 def init_db():
-    with app.open_resource('schema.sql', mode='r', encoding='utf-8') as f:
-        get_db().executescript(f.read())
-        get_db().commit()
+    schema_path = os.path.join(os.path.dirname(__file__), 'schema.sql')
+    with open(schema_path, 'r', encoding='utf-8') as f:
+        db = get_db()
+        db.executescript(f.read())
+        db.commit()
 
 def migrate_db():
     db = get_db()
