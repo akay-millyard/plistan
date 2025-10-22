@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="stack">
+  <div class="card">
+    <h2>Admin – {{ tenant['name'] }}</h2>
+    <div class="row">
+      <a class="btn btn-primary" href="{{ url_for('admin_create_household') }}?t={{ tenant['slug'] }}">Skapa hushåll</a>
+      <a class="btn" href="{{ url_for('admin_settings') }}?t={{ tenant['slug'] }}">Inställningar</a>
+      <a class="btn" href="{{ url_for('export_vehicles_csv') }}?t={{ tenant['slug'] }}">Exportera fordon (CSV)</a>
+      <a class="btn" href="{{ url_for('status_page') }}?t={{ tenant['slug'] }}">Kontroll</a>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>Översikt</h3>
+    <p>Hushåll: <strong>{{ stats.households }}</strong> • Resident-fordon: <strong>{{ stats.resident }}</strong> • Aktiva gäster: <strong>{{ stats.guest }}</strong></p>
+  </div>
+
+  <div class="card">
+    <h3>Hushåll och fordon</h3>
+    <ul>
+      {% for h in households %}
+        <li style="margin-bottom:10px">
+          <strong>{{ h['name'] }}</strong> <span class="badge">kod {{ h['invite_code'] }}</span>
+          {% if h['vehicles']|length %}
+            <ul>
+              {% for v in h['vehicles'] %}
+                <li>{{ v['reg'] }} – {{ v['type'] }}{% if v['type']=='guest' and v['valid_to'] %} (till {{ v['valid_to'] }}){% endif %}{% if v['ownership_type'] %} • {{ v['ownership_type'] }}{% endif %}</li>
+              {% endfor %}
+            </ul>
+          {% else %}
+            <div class="badge">Inga fordon</div>
+          {% endif %}
+        </li>
+      {% endfor %}
+    </ul>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card">
+<h2>Admin: Skapa hushåll – {{ tenant['name'] }}</h2>
+<form method="post" class="stack">
+  <div>
+    <label for="name">Namn (t.ex. Hus 18)</label>
+    <input id="name" name="name" required>
+  </div>
+  <div>
+    <label for="resident_email">(Valfritt) Skapa boendekonto: e-post</label>
+    <input id="resident_email" name="resident_email" type="email">
+  </div>
+  <button class="btn btn-primary" type="submit">Skapa</button>
+</form>
+</div>
+
+{% if created %}
+  <div class="card" style="margin-top:16px">
+    <h3>Skapat hushåll: {{ household.name }}</h3>
+    <p>Hushållskod: <code>{{ household.invite_code }}</code></p>
+    {% if resident_email %}
+      <p>Boende-konto: {{ resident_email }} • Lösenord: <code>{{ resident_password }}</code></p>
+    {% endif %}
+    <div class="row">
+      <a class="btn btn-primary" href="{{ resident_link }}">Boendevy</a>
+      <a class="btn" href="{{ guest_link }}">Gästlänk</a>
+    </div>
+    <div style="margin-top:12px">{{ qr_svg|safe }}</div>
+  </div>
+{% endif %}
+{% endblock %}

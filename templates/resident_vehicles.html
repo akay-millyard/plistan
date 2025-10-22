@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="stack">
+  <div class="card">
+    <h2>Min parkering – {{ household.name }}</h2>
+    <p class="muted">Max {{ max_resident }} boendefordon • Max gästtimmar: {{ max_hours }}</p>
+
+    {% if vehicles|length < max_resident %}
+      <form method="post" action="{{ url_for('resident_add_vehicle') }}?t={{ tenant_slug }}&hid={{ household.id }}" class="stack">
+        <div class="row">
+          <div style="flex:1">
+            <label for="reg">Registreringsnummer</label>
+            <input id="reg" name="reg" required placeholder="ABC123 eller ABC12A">
+          </div>
+          <div style="min-width:220px">
+            <label for="ownership_type">Typ</label>
+            <select id="ownership_type" name="ownership_type" required>
+              <option value="egen">Egenägd</option>
+              <option value="företag">Företagsbil</option>
+              <option value="lånad">Lånad</option>
+              <option value="hyrbil">Hyrbil</option>
+            </select>
+          </div>
+        </div>
+        <button class="btn btn-primary" type="submit">+ Lägg till fordon</button>
+      </form>
+    {% else %}
+      <p><strong>Du har nått max {{ max_resident }} registrerade fordon.</strong></p>
+    {% endif %}
+
+    <ul style="margin-top:12px">
+      {% for v in vehicles %}
+      <li class="row" style="justify-content:space-between">
+        <div>
+          <strong>{{ v['reg'] }}</strong>
+          {% if v['ownership_type'] %}<span class="badge">{{ v['ownership_type'] }}</span>{% endif %}
+        </div>
+        {% if v['type']=='resident' %}
+        <form method="post" action="{{ url_for('resident_delete_vehicle', vehicle_id=v['id']) }}?t={{ tenant_slug }}&hid={{ household.id }}" class="row" onsubmit="return confirm('Bekräfta att du vill ta bort fordonet.');">
+          <input type="hidden" name="reason" value="Byter fordon">
+          <button class="btn btn-ghost" type="submit">Ta bort</button>
+        </form>
+        {% endif %}
+      </li>
+      {% endfor %}
+    </ul>
+  </div>
+
+  <div class="card">
+    <h3>Gästlänk & QR</h3>
+    <form method="post" action="{{ url_for('resident_new_guest_link') }}?t={{ tenant_slug }}&hid={{ household.id }}" class="row">
+      <div>
+        <label for="hours">Max timmar för gäster (1–{{ max_hours }})</label>
+        <input id="hours" name="hours" type="number" min="1" max="{{ max_hours }}" value="{{ max_hours }}" required>
+      </div>
+      <button class="btn btn-primary" type="submit">Skapa gästlänk</button>
+    </form>
+    {% if guest_link %}
+      <p style="margin-top:10px">Länk: <a href="{{ guest_link }}">{{ guest_link }}</a></p>
+      <div style="margin-top:10px">{{ qr_svg|safe }}</div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

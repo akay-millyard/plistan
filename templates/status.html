@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card">
+<h2>Kontroll / Status</h2>
+<form method="get" class="row">
+  <input type="hidden" name="t" value="{{ tenant_slug }}">
+  <div style="flex:1">
+    <label for="reg">Registreringsnummer</label>
+    <input id="reg" name="reg" value="{{ reg or '' }}" placeholder="ABC123" autofocus>
+  </div>
+  <button class="btn btn-primary" type="submit">Kontrollera</button>
+</form>
+
+{% if result %}
+  <div class="status {{ result['status'] }}" style="margin-top:12px">
+    <p>Status: <strong>{{ result['status'] }}</strong></p>
+    {% if result['type'] %}<p>Typ: {{ result['type'] }}</p>{% endif %}
+    {% if result['household'] %}<p>Hushåll: {{ result['household'] }}</p>{% endif %}
+    {% if result['valid_to'] %}<p>Giltig till: {{ result['valid_to'] }}</p>{% endif %}
+  </div>
+{% endif %}
+</div>
+{% endblock %}

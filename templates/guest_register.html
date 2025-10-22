@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card">
+<h2>Gästparkering för {{ household.name }}</h2>
+{% if error %}<p class="status unknown">{{ error }}</p>{% endif %}
+<form method="post" class="stack">
+  <input type="hidden" name="token" value="{{ token }}">
+  <div>
+    <label for="reg">Registreringsnummer</label>
+    <input id="reg" name="reg" required placeholder="ABC123 eller ABC12A">
+  </div>
+  <div>
+    <label for="hours">Giltighet (timmar)</label>
+    <input id="hours" name="hours" type="number" min="1" max="{{ max_hours }}" value="{{ max_hours }}" required>
+  </div>
+  <button class="btn btn-primary" type="submit">Registrera gäst</button>
+</form>
+{% if valid_to %}
+  <p class="status allowed" style="margin-top:10px">Gästen är registrerad till {{ valid_to }}.</p>
+{% endif %}
+</div>
+{% endblock %}

@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card">
+<h2>Skapa ny förening (superadmin)</h2>
+<form method="post" class="stack">
+  <div>
+    <label for="name">Föreningens namn</label>
+    <input id="name" name="name" required>
+  </div>
+  <div>
+    <label for="slug">Slug (t.ex. solglantan)</label>
+    <input id="slug" name="slug" pattern="[a-z0-9-]{3,}" required>
+  </div>
+  <div>
+    <label for="admin_email">Admin e-post</label>
+    <input id="admin_email" name="admin_email" type="email" required>
+  </div>
+  <button class="btn btn-primary" type="submit">Skapa förening + admin</button>
+</form>
+</div>
+
+{% if created %}
+  <div class="card" style="margin-top:16px">
+    <h3>Skapad förening: {{ tenant.name }} ({{ tenant.slug }})</h3>
+    <p>Admin: <strong>{{ admin_email }}</strong></p>
+    <p>Lösenord (autogenererat, visa en gång): <code>{{ admin_password }}</code></p>
+  </div>
+{% endif %}
+{% endblock %}

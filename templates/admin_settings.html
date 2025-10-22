@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card">
+<h2>Inställningar – {{ tenant['name'] }}</h2>
+<form method="post" class="stack">
+  <div>
+    <label for="max_guest_hours">Max gästtimmar (1–72)</label>
+    <input id="max_guest_hours" name="max_guest_hours" type="number" min="1" max="72" value="{{ max_guest_hours or 24 }}" required>
+  </div>
+  <div>
+    <label for="max_resident_vehicles">Max boendefordon per hushåll</label>
+    <input id="max_resident_vehicles" name="max_resident_vehicles" type="number" min="1" max="5" value="{{ max_resident_vehicles or 1 }}" required>
+  </div>
+  <button class="btn btn-primary" type="submit">Spara</button>
+</form>
+</div>
+{% endblock %}

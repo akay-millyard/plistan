@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="stack">
+  <div class="card">
+    <h2>Superadmin – Dashboard</h2>
+    <p>Antal föreningar: <strong>{{ tenants|length }}</strong></p>
+    <div class="row">
+      <a class="btn btn-primary" href="{{ url_for('new_tenant') }}">Skapa ny förening</a>
+    </div>
+  </div>
+  <div class="card">
+    <h3>Föreningar</h3>
+    <ul>
+      {% for t in tenants %}
+        <li class="row" style="justify-content:space-between">
+          <div>
+            <strong>{{ t['name'] }}</strong> <span class="badge">{{ t['slug'] }}</span>
+          </div>
+          <div class="row">
+            <a class="btn" href="{{ url_for('admin_dashboard') }}?t={{ t['slug'] }}">Visa adminpanel</a>
+            <a class="btn btn-ghost" href="{{ url_for('admin_billing_csv') }}?t={{ t['slug'] }}&month={{ current_month }}&unit_price={{ t['fortnox_unit_price'] or 0 }}">Fakturaunderlag (CSV)</a>
+          </div>
+        </li>
+      {% endfor %}
+    </ul>
+  </div>
+</div>
+{% endblock %}

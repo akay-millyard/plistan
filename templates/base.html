@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="sv">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>P-Listan</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  {% if tenant and tenant['primary_color'] %}
+  <style>:root{ --brand: {{ tenant['primary_color'] }}; }</style>
+  {% endif %}
+</head>
+<body>
+  <header>
+    <div class="header-inner">
+      <div class="logo">
+        <div class="logo-badge">P</div>
+        P-Listan <span class="version">{{ version }}</span>
+      </div>
+      <nav style="margin-left:auto">
+        {% if g.user %}
+          {% if g.user['role'] == 'resident' %}
+            <a href="{{ url_for('home') }}">Min parkering</a>
+          {% elif g.user['role'] == 'admin' %}
+            <a href="{{ url_for('home') }}">Admin</a>
+            <a href="{{ url_for('status_page') }}{% if tenant_slug %}?t={{ tenant_slug }}{% endif %}">Kontroll</a>
+          {% elif g.user['role'] == 'superadmin' %}
+            <a href="{{ url_for('home') }}">Superadmin</a>
+            <a href="{{ url_for('new_tenant') }}">Skapa förening</a>
+          {% endif %}
+          <span class="badge">{{ g.user['email'] }} • {{ g.user['role'] }}</span>
+          <a href="{{ url_for('logout') }}">Logga ut</a>
+        {% else %}
+          <a href="{{ url_for('login') }}{% if tenant_slug %}?t={{ tenant_slug }}{% endif %}">Logga in</a>
+        {% endif %}
+      </nav>
+    </div>
+  </header>
+  <main>
+    {% with messages = get_flashed_messages() %}
+      {% if messages %}
+        <div class="flash">{% for m in messages %}<div>{{ m }}</div>{% endfor %}</div>
+      {% endif %}
+    {% endwith %}
+    {% block content %}{% endblock %}
+  </main>
+  <footer>
+    <p>Prototype av Millyard – multi-tenant MVP.</p>
+  </footer>
+</body>
+</html>
