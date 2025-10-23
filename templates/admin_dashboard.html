@@ -27,7 +27,9 @@
     <ul>
       {% for h in households %}
         <li style="margin-bottom:10px">
-          <strong>{{ h['name'] }}</strong> <span class="badge">kod {{ h['invite_code'] }}</span>
+          <strong>{{ h['name'] }}</strong>
+          <a class="btn btn-ghost" href="{{ url_for('admin_manage_household', hid=h['id'], t=tenant['slug']) }}">Hantera</a>
+          <span class="badge">kod {{ h['invite_code'] }}</span>
           {% if h['vehicles']|length %}
             <ul>
               {% for v in h['vehicles'] %}

@@ -79,6 +79,10 @@ def get_current_user():
     if not uid: return None
     return get_db().execute("SELECT * FROM users WHERE id=?", (uid,)).fetchone()
 
+def get_current_tenant():
+    return getattr(g, 'tenant', None)
+
+
 def role_required(*roles):
     def deco(fn):
         @wraps(fn)
@@ -290,6 +294,113 @@ def admin_dashboard():
     class S: pass
     stats = S(); stats.resident = res['c']; stats.guest = guest['c']; stats.households = hh_count['c']
     return render_template('admin_dashboard.html', tenant=g.tenant, households=households, stats=stats)
+
+
+@app.route('/admin/household/<int:hid>', methods=['GET','POST'])
+@role_required('admin','superadmin')
+def admin_manage_household(hid):
+    r = require_tenant_or_redirect()
+    if r:
+        return r
+    tenant = get_current_tenant()
+    if not tenant:
+        return redirect(url_for('admin_dashboard'))
+    db = get_db()
+    household = db.execute(
+        "SELECT * FROM households WHERE id=? AND tenant_id=?",
+        (hid, tenant['id']),
+    ).fetchone()
+    if not household:
+        abort(404)
+
+    if request.method == 'POST':
+        if 'delete_vehicle' in request.form:
+            vid = request.form.get('delete_vehicle')
+            try:
+                vid_int = int(vid)
+            except (TypeError, ValueError):
+                flash('Ogiltigt fordon.', 'warning')
+            else:
+                db.execute(
+                    "DELETE FROM vehicles WHERE id=? AND household_id=? AND tenant_id=?",
+                    (vid_int, hid, tenant['id']),
+                )
+                db.commit()
+                flash('Fordon borttaget.', 'success')
+        elif 'reg' in request.form:
+            reg = normalize_reg(request.form.get('reg'))
+            ownership_type = request.form.get('ownership_type', 'egen')
+            if ownership_type not in {'egen', 'företag', 'lånad', 'hyrbil'}:
+                ownership_type = 'egen'
+            if not reg:
+                flash('Ange registreringsnummer.', 'warning')
+            else:
+                try:
+                    db.execute(
+                        "INSERT INTO vehicles (tenant_id, household_id, reg, type, ownership_type) VALUES (?, ?, ?, 'resident', ?)",
+                        (tenant['id'], hid, reg, ownership_type),
+                    )
+                    db.commit()
+                    flash('Fordon tillagt.', 'success')
+                except sqlite3.IntegrityError:
+                    db.rollback()
+                    flash('Det registreringsnumret finns redan.', 'warning')
+        return redirect(url_for('admin_manage_household', hid=hid, t=tenant['slug']))
+
+    vehicles = db.execute(
+        "SELECT * FROM vehicles WHERE household_id=? AND tenant_id=?",
+        (hid, tenant['id']),
+    ).fetchall()
+    residents = db.execute(
+        "SELECT * FROM users WHERE household_id=? AND (tenant_id=? OR tenant_id IS NULL)",
+        (hid, tenant['id']),
+    ).fetchall()
+
+    return render_template(
+        'admin_manage_household.html',
+        tenant=tenant,
+        household=household,
+        vehicles=vehicles,
+        residents=residents,
+    )
+
+
+@app.route("/admin/household/<int:hid>/add_resident", methods=["POST"])
+@role_required('admin','superadmin')
+def admin_add_resident(hid):
+    r = require_tenant_or_redirect()
+    if r:
+        return r
+    tenant = get_current_tenant()
+    if not tenant:
+        return redirect(url_for('admin_dashboard'))
+    db = get_db()
+    household = db.execute(
+        "SELECT id FROM households WHERE id=? AND tenant_id=?",
+        (hid, tenant['id']),
+    ).fetchone()
+    if not household:
+        abort(404)
+
+    email = (request.form.get('new_email') or '').strip().lower()
+    if not email:
+        flash('Ange e-postadress.', 'warning')
+        return redirect(url_for('admin_manage_household', hid=hid, t=tenant['slug']))
+
+    password = generate_password()
+    try:
+        db.execute(
+            "INSERT INTO users (tenant_id, household_id, email, pw_hash, role) VALUES (?,?,?,?,?)",
+            (tenant['id'], hid, email, hash_password(password), 'resident'),
+        )
+        db.commit()
+        flash(f"Boende {email} skapad (lösenord: {password})", 'success')
+    except sqlite3.IntegrityError:
+        db.rollback()
+        flash('E-postadressen används redan.', 'warning')
+
+    return redirect(url_for('admin_manage_household', hid=hid, t=tenant['slug']))
+
 
 @app.route('/admin/create-household', methods=['GET','POST'])
 @role_required('admin','superadmin')
