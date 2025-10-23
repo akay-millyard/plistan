@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
-import os, sqlite3, re, secrets, datetime, csv, random, string, base64
+import os, sqlite3, re, secrets, datetime, csv, random, string, base64, io
 from types import SimpleNamespace
-import io
 from flask import Flask, g, render_template, request, redirect, url_for, jsonify, abort, flash, make_response, session
 from werkzeug.security import generate_password_hash, check_password_hash
 import jwt, qrcode
