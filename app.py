@@ -6,7 +6,7 @@ from werkzeug.security import generate_password_hash, check_password_hash
 import jwt, qrcode
 from functools import wraps
 
-VERSION = "v3.2.0-2025-10-23"
+VERSION = "v3.2.2"
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev-secret-change-me')
