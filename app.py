@@ -629,34 +629,109 @@ def resident_delete_vehicle(vehicle_id):
         flash('Fordon borttaget.')
     return redirect(request.referrer or url_for('home'))
 
-@app.post('/resident/guest-link')
-@role_required('resident','admin','superadmin')
+@app.route("/resident/new_guest_link", methods=["POST"])
 def resident_new_guest_link():
-    r = require_tenant_or_redirect()
-    if r: return r
-    db = get_db(); u = get_current_user(); hid = request.args.get('hid', type=int)
-    if u['role']=='resident' and u['household_id'] != hid: abort(403)
-    hh = db.execute("SELECT * FROM households WHERE id=? AND tenant_id=?", (hid, g.tenant['id'])).fetchone()
-    if not hh: return ("Hushåll hittades inte", 404)
-    rset = db.execute("SELECT value FROM settings WHERE tenant_id=? AND key='max_guest_hours'", (g.tenant['id'],)).fetchone()
-    max_hours = int(rset['value']) if rset else 24
-    hours = request.form.get('hours', type=int) or max_hours
-    if hours < 1 or hours > max_hours: hours = max_hours
-    now = datetime.datetime.utcnow(); exp = now + datetime.timedelta(hours=72)
-    payload = dict(tid=g.tenant['id'], hid=hid, iat=int(now.timestamp()), exp=int(exp.timestamp()))
-    token = jwt.encode(payload, os.environ.get('JWT_SECRET', 'dev-jwt-secret'), algorithm='HS256')
-    db.execute("INSERT INTO guest_tokens (tenant_id, household_id, token, expires_at) VALUES (?, ?, ?, ?)", (g.tenant['id'], hid, token, exp.isoformat())); db.commit()
-    guest_link = url_for('guest_register', _external=True) + f"?t={g.tenant['slug']}&token={token}"
-    qr = qrcode.make(guest_link)
-    buf = io.BytesIO()
-    qr.save(buf, format="PNG")
-    qr_b64 = base64.b64encode(buf.getvalue()).decode("utf-8")
-    qr_svg = f"<img src='data:image/png;base64,{qr_b64}' alt='QR code' style='width:160px'>"
-    vs = db.execute("SELECT id, reg, type, ownership_type FROM vehicles WHERE tenant_id=? AND household_id=? ORDER BY type DESC, created_at DESC", (g.tenant['id'], hid)).fetchall()
-    rset2 = db.execute("SELECT value FROM settings WHERE tenant_id=? AND key='max_resident_vehicles'", (g.tenant['id'],)).fetchone()
-    max_res = int(rset2['value']) if rset2 else 1
-    return render_template('resident_vehicles.html', household=hh, vehicles=[dict(x) for x in vs],
-                           guest_link=guest_link, qr_svg=qr_svg, max_hours=max_hours, max_resident=max_res, tenant_slug=g.tenant['slug'])
+    if not g.user:
+        return redirect(url_for("login"))
+
+    try:
+        tenant_slug = request.args.get("t", "").strip()
+        hid = int(request.args.get("hid", "0"))
+        if not tenant_slug or not hid:
+            flash("Ogiltig förfrågan (saknar tenant eller hushåll).", "warning")
+            return redirect(url_for("login"))
+
+        tenant = get_current_tenant()
+        if not tenant or tenant.get("slug") != tenant_slug:
+            flash("Kunde inte hitta förening.", "warning")
+            return redirect(url_for("login"))
+
+        db = get_db()
+        household = db.execute(
+            "SELECT * FROM households WHERE id=? AND tenant_id=?",
+            (hid, tenant["id"])
+        ).fetchone()
+        if not household:
+            flash("Hushållet finns inte.", "warning")
+            return redirect(url_for("admin_dashboard", t=tenant_slug))
+
+        if g.user["role"] == "resident" and g.user.get("household_id") != household["id"]:
+            abort(403)
+
+        settings_rows = db.execute(
+            "SELECT key, value FROM settings WHERE tenant_id=?",
+            (tenant["id"],)
+        ).fetchall()
+        settings = {row["key"]: row["value"] for row in settings_rows}
+
+        try:
+            max_hours = int(settings.get("max_guest_hours") or 24)
+        except (TypeError, ValueError):
+            max_hours = 24
+
+        req_hours = request.form.get("hours", str(max_hours))
+        try:
+            hours = max(1, min(max_hours, int(req_hours)))
+        except Exception:
+            hours = max_hours
+
+        now = datetime.datetime.utcnow()
+        expires_at = now + datetime.timedelta(hours=hours)
+        payload = {
+            "tenant": tenant["slug"],
+            "tenant_id": tenant["id"],
+            "hid": household["id"],
+            "type": "guest",
+            "hours": hours,
+            "iat": int(now.timestamp())
+        }
+        token = jwt.encode(payload, app.config["SECRET_KEY"], algorithm="HS256")
+
+        guest_link = url_for("guest_register", token=token, _external=True)
+
+        db.execute(
+            "INSERT INTO guest_tokens (tenant_id, household_id, token, expires_at) VALUES (?, ?, ?, ?)",
+            (tenant["id"], household["id"], token, expires_at.isoformat())
+        )
+        db.commit()
+
+        import qrcode
+
+        qr_img = qrcode.make(guest_link)
+        buf = io.BytesIO()
+        qr_img.save(buf, format="PNG")
+        qr_b64 = base64.b64encode(buf.getvalue()).decode("utf-8")
+        qr_svg = f"<img src='data:image/png;base64,{qr_b64}' alt='QR' style='width:160px;height:160px;border-radius:8px;'>"
+
+        vehicles = db.execute(
+            "SELECT id, reg, type, ownership_type, valid_to FROM vehicles WHERE tenant_id=? AND household_id=? ORDER BY type DESC, created_at DESC",
+            (tenant["id"], household["id"])
+        ).fetchall()
+
+        try:
+            max_resident = int(settings.get("max_resident_vehicles") or 1)
+        except (TypeError, ValueError):
+            max_resident = 1
+
+        return render_template(
+            "resident_vehicles.html",
+            tenant_slug=tenant["slug"],
+            household=household,
+            vehicles=[dict(v) for v in vehicles],
+            max_resident=max_resident,
+            max_hours=max_hours,
+            guest_link=guest_link,
+            qr_svg=qr_svg
+        )
+
+    except Exception as e:
+        app.logger.error("resident_new_guest_link error: %s\n%s", e, traceback.format_exc())
+        flash("Kunde inte skapa gästlänk. Försök igen.", "danger")
+        tenant_slug = request.args.get("t", "").strip()
+        hid = request.args.get("hid", "").strip()
+        if tenant_slug and hid:
+            return redirect(url_for("resident_vehicles", t=tenant_slug, hid=hid))
+        return redirect(url_for("login"))
 
 @app.get('/admin/billing.csv')
 @role_required('superadmin')
@@ -695,12 +770,27 @@ def guest_register():
     db = get_db()
     token = request.values.get('token','')
     try:
-        payload = jwt.decode(token, os.environ.get('JWT_SECRET', 'dev-jwt-secret'), algorithms=['HS256'])
-        tid, hid = payload.get('tid'), payload.get('hid')
-        ok = db.execute("SELECT 1 FROM guest_tokens WHERE token=? AND expires_at > ? AND tenant_id=? AND household_id=?", (token, datetime.datetime.utcnow().isoformat(), tid, hid)).fetchone()
-        if not ok: return render_template('guest_register.html', error="Ogiltig eller utgången QR-länk.", household={'name':'(okänd)'}, token=token, max_hours=24)
+        payload = jwt.decode(token, app.config['SECRET_KEY'], algorithms=['HS256'])
     except Exception:
         return render_template('guest_register.html', error="Ogiltig eller utgången QR-länk.", household={'name':'(okänd)'}, token=token, max_hours=24)
+
+    tid = payload.get('tenant_id')
+    hid = payload.get('hid')
+    if not tid and payload.get('tenant'):
+        trow = db.execute("SELECT id FROM tenants WHERE slug=?", (payload.get('tenant'),)).fetchone()
+        if trow:
+            tid = trow['id']
+
+    if not tid or not hid or payload.get('type') != 'guest':
+        return render_template('guest_register.html', error="Ogiltig eller utgången QR-länk.", household={'name':'(okänd)'}, token=token, max_hours=24)
+
+    ok = db.execute(
+        "SELECT 1 FROM guest_tokens WHERE token=? AND expires_at > ? AND tenant_id=? AND household_id=?",
+        (token, datetime.datetime.utcnow().isoformat(), tid, hid)
+    ).fetchone()
+    if not ok:
+        return render_template('guest_register.html', error="Ogiltig eller utgången QR-länk.", household={'name':'(okänd)'}, token=token, max_hours=24)
+
     hh = db.execute("SELECT * FROM households WHERE id=? AND tenant_id=?", (hid, tid)).fetchone()
     if not g.tenant or g.tenant['id'] != tid: g.tenant = db.execute("SELECT * FROM tenants WHERE id=?", (tid,)).fetchone()
     rset = db.execute("SELECT value FROM settings WHERE tenant_id=? AND key='max_guest_hours'", (tid,)).fetchone()
