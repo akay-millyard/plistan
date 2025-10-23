@@ -1,13 +1,13 @@
 # -*- coding: utf-8 -*-
-import os, sqlite3, re, secrets, datetime, csv, random, string
-from io import StringIO, BytesIO
+import os, sqlite3, re, secrets, datetime, csv, random, string, base64
+from types import SimpleNamespace
+import io
 from flask import Flask, g, render_template, request, redirect, url_for, jsonify, abort, flash, make_response, session
 from werkzeug.security import generate_password_hash, check_password_hash
 import jwt, qrcode
-from qrcode.image.svg import SvgImage
 from functools import wraps
 
-VERSION = "v3.1.0"
+VERSION = "v3.2.0-2025-10-23"
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev-secret-change-me')
@@ -78,6 +78,10 @@ def get_current_user():
     if not uid: return None
     return get_db().execute("SELECT * FROM users WHERE id=?", (uid,)).fetchone()
 
+def get_current_tenant():
+    return getattr(g, 'tenant', None)
+
+
 def role_required(*roles):
     def deco(fn):
         @wraps(fn)
@@ -96,7 +100,29 @@ def ensure_superadmin_seed():
     if not email or not pw: return
     db = get_db()
     if not db.execute("SELECT 1 FROM users WHERE email=?", (email,)).fetchone():
-        db.execute("INSERT INTO users (email, pw_hash, role) VALUES (?, ?, 'superadmin')", (email, generate_password_hash(pw))); db.commit()
+        pw_hash = generate_password_hash(pw)
+        db.execute(
+            "INSERT INTO users (email, pw_hash, role) VALUES (?, ?, 'superadmin')",
+            (email, pw_hash),
+        )
+        db.commit()
+
+
+PASSWORD_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789"
+
+
+def hash_password(password):
+    return generate_password_hash(password)
+
+
+def verify_password(plain_password, stored_hash):
+    if not stored_hash:
+        return False
+    return check_password_hash(stored_hash, plain_password)
+
+
+def generate_password(length: int = 12) -> str:
+    return ''.join(secrets.choice(PASSWORD_ALPHABET) for _ in range(length))
 
 def normalize_reg(s):
     if not s: return ''
@@ -114,7 +140,17 @@ def before_every_request():
 
 @app.context_processor
 def inject_globals():
-    return dict(version=VERSION, tenant=g.tenant, tenant_slug=(g.tenant['slug'] if g.tenant else None))
+    tenant = getattr(g, 'tenant', None)
+    tenant_slug = tenant['slug'] if tenant else None
+    user = getattr(g, 'user', None)
+    current_user = SimpleNamespace(**dict(user)) if user else None
+    return dict(
+        version=VERSION,
+        tenant=tenant,
+        tenant_slug=tenant_slug,
+        current_user=current_user,
+        login_page=False,
+    )
 
 def require_tenant_or_redirect():
     if not g.tenant:
@@ -157,6 +193,39 @@ def login():
         flash('Fel e-post eller lösenord.')
     return render_template("auth_login.html", login_page=True)
 
+@app.post('/select-tenant')
+def select_tenant():
+    if not g.user:
+        return redirect(url_for('login'))
+    slug = request.form.get('slug')
+    if not slug:
+        abort(400)
+    # (valfritt) verifiera att g.user har access till just denna tenant
+    db = get_db()
+    t = db.execute("SELECT id FROM tenants WHERE slug=?", (slug,)).fetchone()
+    if not t:
+        abort(404)
+    return _redirect_to_role_start(g.user['role'], slug)
+
+@app.route('/account/password', methods=['GET', 'POST'])
+def account_password():
+    if not g.user:
+        return redirect(url_for('login'))
+    if request.method == 'POST':
+        cur = request.form.get('current') or ''
+        new = request.form.get('new') or ''
+        rep = request.form.get('repeat') or ''
+        if not new or new != rep:
+            return render_template('account_password.html', error='Lösenorden matchar inte.')
+        if not verify_password(cur, g.user['pw_hash']):
+            return render_template('account_password.html', error='Fel nuvarande lösenord.')
+        db = get_db()
+        db.execute("UPDATE users SET pw_hash=? WHERE id=?", (hash_password(new), g.user['id']))
+        db.commit()
+        flash('Lösenord uppdaterat.', 'success')
+        return redirect(url_for('account_password'))
+    return render_template('account_password.html')
+
 @app.get('/logout')
 def logout():
     session.clear(); flash('Utloggad.'); return redirect(url_for('login'))
@@ -169,6 +238,20 @@ def root_dashboard():
     tenants = db.execute("SELECT * FROM tenants ORDER BY created_at DESC").fetchall()
     current_month = datetime.datetime.utcnow().strftime("%Y-%m")
     return render_template('root_dashboard.html', tenants=tenants, current_month=current_month)
+
+
+@app.post('/root/admins/<int:user_id>/reset')
+@role_required('superadmin')
+def root_reset_admin(user_id):
+    db = get_db()
+    u = db.execute("SELECT id, role FROM users WHERE id=?", (user_id,)).fetchone()
+    if not u or u['role'] != 'admin':
+        abort(400)
+    pw = generate_password()
+    db.execute("UPDATE users SET pw_hash=? WHERE id=?", (hash_password(pw), user_id))
+    db.commit()
+    flash(f'Nytt admin-lösenord: {pw} (visa en gång).', 'success')
+    return redirect(url_for('root_dashboard'))
 
 @app.route('/tenants/new', methods=['GET','POST'])
 @role_required('superadmin')
@@ -210,6 +293,165 @@ def admin_dashboard():
     class S: pass
     stats = S(); stats.resident = res['c']; stats.guest = guest['c']; stats.households = hh_count['c']
     return render_template('admin_dashboard.html', tenant=g.tenant, households=households, stats=stats)
+
+
+@app.route('/admin/household/<int:hid>', methods=['GET','POST'])
+@role_required('admin','superadmin')
+def admin_manage_household(hid):
+    r = require_tenant_or_redirect()
+    if r:
+        return r
+    tenant = get_current_tenant()
+    if not tenant:
+        return redirect(url_for('admin_dashboard'))
+    db = get_db()
+    household = db.execute(
+        "SELECT * FROM households WHERE id=? AND tenant_id=?",
+        (hid, tenant['id']),
+    ).fetchone()
+    if not household:
+        abort(404)
+
+    if request.method == 'POST':
+        if 'delete_vehicle' in request.form:
+            vid = request.form.get('delete_vehicle')
+            try:
+                vid_int = int(vid)
+            except (TypeError, ValueError):
+                flash('Ogiltigt fordon.', 'warning')
+            else:
+                db.execute(
+                    "DELETE FROM vehicles WHERE id=? AND household_id=? AND tenant_id=?",
+                    (vid_int, hid, tenant['id']),
+                )
+                db.commit()
+                flash('Fordon borttaget.', 'success')
+        elif 'reg' in request.form:
+            reg = normalize_reg(request.form.get('reg'))
+            ownership_type = request.form.get('ownership_type', 'egen')
+            if ownership_type not in {'egen', 'företag', 'lånad', 'hyrbil'}:
+                ownership_type = 'egen'
+            if not reg:
+                flash('Ange registreringsnummer.', 'warning')
+            else:
+                try:
+                    db.execute(
+                        "INSERT INTO vehicles (tenant_id, household_id, reg, type, ownership_type) VALUES (?, ?, ?, 'resident', ?)",
+                        (tenant['id'], hid, reg, ownership_type),
+                    )
+                    db.commit()
+                    flash('Fordon tillagt.', 'success')
+                except sqlite3.IntegrityError:
+                    db.rollback()
+                    flash('Det registreringsnumret finns redan.', 'warning')
+        return redirect(url_for('admin_manage_household', hid=hid, t=tenant['slug']))
+
+    vehicles = db.execute(
+        "SELECT * FROM vehicles WHERE household_id=? AND tenant_id=?",
+        (hid, tenant['id']),
+    ).fetchall()
+    residents = db.execute(
+        "SELECT * FROM users WHERE household_id=? AND (tenant_id=? OR tenant_id IS NULL)",
+        (hid, tenant['id']),
+    ).fetchall()
+
+    return render_template(
+        'admin_manage_household.html',
+        tenant=tenant,
+        household=household,
+        vehicles=vehicles,
+        residents=residents,
+    )
+
+
+@app.route("/admin/household/<int:hid>/add_resident", methods=["POST"])
+@role_required('admin','superadmin')
+def admin_add_resident(hid):
+    r = require_tenant_or_redirect()
+    if r:
+        return r
+    tenant = get_current_tenant()
+    if not tenant:
+        return redirect(url_for('admin_dashboard'))
+    db = get_db()
+    household = db.execute(
+        "SELECT id FROM households WHERE id=? AND tenant_id=?",
+        (hid, tenant['id']),
+    ).fetchone()
+    if not household:
+        abort(404)
+
+    email = (request.form.get('new_email') or '').strip().lower()
+    if not email:
+        flash('Ange e-postadress.', 'warning')
+        return redirect(url_for('admin_manage_household', hid=hid, t=tenant['slug']))
+
+    password = generate_password()
+    try:
+        db.execute(
+            "INSERT INTO users (tenant_id, household_id, email, pw_hash, role) VALUES (?,?,?,?,?)",
+            (tenant['id'], hid, email, hash_password(password), 'resident'),
+        )
+        db.commit()
+        flash(f"Boende {email} skapad (lösenord: {password})", 'success')
+    except sqlite3.IntegrityError:
+        db.rollback()
+        flash('E-postadressen används redan.', 'warning')
+
+    return redirect(url_for('admin_manage_household', hid=hid, t=tenant['slug']))
+
+
+
+@app.route("/admin/household/<int:hid>/remove_resident/<int:uid>", methods=["POST"])
+@role_required('admin','superadmin')
+def admin_remove_resident(hid, uid):
+    r = require_tenant_or_redirect()
+    if r:
+        return r
+    tenant = get_current_tenant()
+    if not tenant:
+        return redirect(url_for('admin_dashboard'))
+    db = get_db()
+    cursor = db.execute(
+        "DELETE FROM users WHERE id=? AND household_id=? AND tenant_id=?",
+        (uid, hid, tenant['id']),
+    )
+    db.commit()
+    if cursor.rowcount:
+        flash('Användare borttagen från hushållet', 'info')
+    else:
+        flash('Användaren hittades inte.', 'warning')
+    return redirect(url_for('admin_manage_household', hid=hid, t=tenant['slug']))
+
+
+@app.route("/admin/household/<int:hid>/delete", methods=["POST"])
+@role_required('admin','superadmin')
+def admin_delete_household(hid):
+    r = require_tenant_or_redirect()
+    if r:
+        return r
+    tenant = get_current_tenant()
+    if not tenant:
+        return redirect(url_for('admin_dashboard'))
+    db = get_db()
+    db.execute(
+        "DELETE FROM vehicles WHERE household_id=? AND tenant_id=?",
+        (hid, tenant['id']),
+    )
+    db.execute(
+        "DELETE FROM users WHERE household_id=? AND tenant_id=?",
+        (hid, tenant['id']),
+    )
+    household_cur = db.execute(
+        "DELETE FROM households WHERE id=? AND tenant_id=?",
+        (hid, tenant['id']),
+    )
+    db.commit()
+    if household_cur.rowcount:
+        flash('Hushållet har raderats', 'success')
+    else:
+        flash('Hushållet kunde inte hittas.', 'warning')
+    return redirect(url_for('admin_dashboard', t=tenant['slug']))
 
 @app.route('/admin/create-household', methods=['GET','POST'])
 @role_required('admin','superadmin')
@@ -269,6 +511,51 @@ def admin_settings():
                            max_guest_hours=getset('max_guest_hours', 24),
                            max_resident_vehicles=getset('max_resident_vehicles', 1))
 
+
+@app.get('/admin/users')
+@role_required('admin')
+def admin_users():
+    r = require_tenant_or_redirect()
+    if r: return r
+    db = get_db()
+    users = db.execute(
+        """
+        SELECT DISTINCT u.id, u.email
+        FROM users u
+        JOIN user_tenants ut ON ut.user_id=u.id
+        WHERE ut.tenant_id=? AND ut.role='resident'
+        ORDER BY u.email
+        """,
+        (g.tenant['id'],),
+    ).fetchall()
+    return render_template('admin_users.html', users=users, tenant=g.tenant)
+
+
+@app.post('/admin/users/<int:user_id>/reset')
+@role_required('admin')
+def admin_reset_user(user_id):
+    r = require_tenant_or_redirect()
+    if r: return r
+    db = get_db()
+    own = db.execute(
+        """
+        SELECT 1 FROM user_tenants
+        WHERE user_id=? AND tenant_id=? AND role='resident'
+        """,
+        (user_id, g.tenant['id']),
+    ).fetchone()
+    if not own:
+        abort(403)
+    pw = generate_password()
+    db.execute(
+        "UPDATE users SET pw_hash=? WHERE id=?",
+        (hash_password(pw), user_id),
+    )
+    db.commit()
+    flash(f'Nytt lösenord: {pw} (visa en gång).', 'success')
+    return redirect(url_for('admin_users') + f'?t={g.tenant["slug"]}')
+
+
 @app.get('/admin/export/vehicles.csv')
 @role_required('admin','superadmin')
 def export_vehicles_csv():
@@ -281,7 +568,7 @@ def export_vehicles_csv():
       WHERE v.tenant_id=?
       ORDER BY v.type DESC, v.created_at DESC
     """, (g.tenant['id'],)).fetchall()
-    si = StringIO(); w = csv.writer(si)
+    si = io.StringIO(); w = csv.writer(si)
     w.writerow(['reg','type','ownership_type','valid_to','household'])
     for rr in rows: w.writerow([rr['reg'], rr['type'], rr['ownership_type'] or '', rr['valid_to'] or '', rr['household']])
     out = make_response(si.getvalue()); out.headers['Content-Type']='text/csv'
@@ -361,8 +648,11 @@ def resident_new_guest_link():
     token = jwt.encode(payload, os.environ.get('JWT_SECRET', 'dev-jwt-secret'), algorithm='HS256')
     db.execute("INSERT INTO guest_tokens (tenant_id, household_id, token, expires_at) VALUES (?, ?, ?, ?)", (g.tenant['id'], hid, token, exp.isoformat())); db.commit()
     guest_link = url_for('guest_register', _external=True) + f"?t={g.tenant['slug']}&token={token}"
-    qr = qrcode.QRCode(box_size=10, border=2); qr.add_data(guest_link); qr.make(fit=True)
-    buf = BytesIO(); qr.make_image(image_factory=SvgImage).save(buf); qr_svg = buf.getvalue().decode('utf-8')
+    qr = qrcode.make(guest_link)
+    buf = io.BytesIO()
+    qr.save(buf, format="PNG")
+    qr_b64 = base64.b64encode(buf.getvalue()).decode("utf-8")
+    qr_svg = f"<img src='data:image/png;base64,{qr_b64}' alt='QR code' style='width:160px'>"
     vs = db.execute("SELECT id, reg, type, ownership_type FROM vehicles WHERE tenant_id=? AND household_id=? ORDER BY type DESC, created_at DESC", (g.tenant['id'], hid)).fetchall()
     rset2 = db.execute("SELECT value FROM settings WHERE tenant_id=? AND key='max_resident_vehicles'", (g.tenant['id'],)).fetchone()
     max_res = int(rset2['value']) if rset2 else 1
@@ -388,7 +678,7 @@ def admin_billing_csv():
     hh_count = db.execute("SELECT COUNT(*) AS c FROM households WHERE tenant_id=?", (g.tenant['id'],)).fetchone()['c']
     amount = unit_price * hh_count
 
-    si = StringIO()
+    si = io.StringIO()
     w = csv.writer(si)
     w.writerow(['tenant', 'month', 'households', 'unit_price', 'amount'])
     w.writerow([g.tenant['slug'], month, hh_count, f"{unit_price:.2f}", f"{amount:.2f}"])
