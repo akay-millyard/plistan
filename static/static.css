@@ -23,6 +23,8 @@ input,select{background:#0b1220;color:var(--text);padding:12px 14px;width:100%;o
 input:focus,select:focus{border-color:var(--brand);box-shadow:0 0 0 4px rgba(14,165,233,.15)}
 .btn{padding:11px 16px;border:none;cursor:pointer;border-radius:12px;font-weight:600;background:#1f2937;color:#e5e7eb}
 .btn-primary{background:linear-gradient(135deg,var(--brand),var(--brand-strong));color:white}
+.btn-danger{background:#b91c1c;border:1px solid #ef4444;color:#fff;padding:6px 12px;border-radius:6px;text-decoration:none;}
+.btn-danger:hover{background:#dc2626;border-color:#f87171;}
 .btn-ghost{
   background:none;
   border:1px solid #30363d;

@@ -1,11 +1,9 @@
 # -*- coding: utf-8 -*-
-import os, sqlite3, re, secrets, datetime, csv, random, string
+import os, sqlite3, re, secrets, datetime, csv, random, string, base64, io
 from types import SimpleNamespace
-from io import StringIO, BytesIO
 from flask import Flask, g, render_template, request, redirect, url_for, jsonify, abort, flash, make_response, session
 from werkzeug.security import generate_password_hash, check_password_hash
 import jwt, qrcode
-from qrcode.image.svg import SvgImage
 from functools import wraps
 
 VERSION = "v3.2.0-2025-10-23"
@@ -402,6 +400,58 @@ def admin_add_resident(hid):
     return redirect(url_for('admin_manage_household', hid=hid, t=tenant['slug']))
 
 
+
+@app.route("/admin/household/<int:hid>/remove_resident/<int:uid>", methods=["POST"])
+@role_required('admin','superadmin')
+def admin_remove_resident(hid, uid):
+    r = require_tenant_or_redirect()
+    if r:
+        return r
+    tenant = get_current_tenant()
+    if not tenant:
+        return redirect(url_for('admin_dashboard'))
+    db = get_db()
+    cursor = db.execute(
+        "DELETE FROM users WHERE id=? AND household_id=? AND tenant_id=?",
+        (uid, hid, tenant['id']),
+    )
+    db.commit()
+    if cursor.rowcount:
+        flash('Användare borttagen från hushållet', 'info')
+    else:
+        flash('Användaren hittades inte.', 'warning')
+    return redirect(url_for('admin_manage_household', hid=hid, t=tenant['slug']))
+
+
+@app.route("/admin/household/<int:hid>/delete", methods=["POST"])
+@role_required('admin','superadmin')
+def admin_delete_household(hid):
+    r = require_tenant_or_redirect()
+    if r:
+        return r
+    tenant = get_current_tenant()
+    if not tenant:
+        return redirect(url_for('admin_dashboard'))
+    db = get_db()
+    db.execute(
+        "DELETE FROM vehicles WHERE household_id=? AND tenant_id=?",
+        (hid, tenant['id']),
+    )
+    db.execute(
+        "DELETE FROM users WHERE household_id=? AND tenant_id=?",
+        (hid, tenant['id']),
+    )
+    household_cur = db.execute(
+        "DELETE FROM households WHERE id=? AND tenant_id=?",
+        (hid, tenant['id']),
+    )
+    db.commit()
+    if household_cur.rowcount:
+        flash('Hushållet har raderats', 'success')
+    else:
+        flash('Hushållet kunde inte hittas.', 'warning')
+    return redirect(url_for('admin_dashboard', t=tenant['slug']))
+
 @app.route('/admin/create-household', methods=['GET','POST'])
 @role_required('admin','superadmin')
 def admin_create_household():
@@ -517,7 +567,7 @@ def export_vehicles_csv():
       WHERE v.tenant_id=?
       ORDER BY v.type DESC, v.created_at DESC
     """, (g.tenant['id'],)).fetchall()
-    si = StringIO(); w = csv.writer(si)
+    si = io.StringIO(); w = csv.writer(si)
     w.writerow(['reg','type','ownership_type','valid_to','household'])
     for rr in rows: w.writerow([rr['reg'], rr['type'], rr['ownership_type'] or '', rr['valid_to'] or '', rr['household']])
     out = make_response(si.getvalue()); out.headers['Content-Type']='text/csv'
@@ -597,8 +647,11 @@ def resident_new_guest_link():
     token = jwt.encode(payload, os.environ.get('JWT_SECRET', 'dev-jwt-secret'), algorithm='HS256')
     db.execute("INSERT INTO guest_tokens (tenant_id, household_id, token, expires_at) VALUES (?, ?, ?, ?)", (g.tenant['id'], hid, token, exp.isoformat())); db.commit()
     guest_link = url_for('guest_register', _external=True) + f"?t={g.tenant['slug']}&token={token}"
-    qr = qrcode.QRCode(box_size=10, border=2); qr.add_data(guest_link); qr.make(fit=True)
-    buf = BytesIO(); qr.make_image(image_factory=SvgImage).save(buf); qr_svg = buf.getvalue().decode('utf-8')
+    qr = qrcode.make(guest_link)
+    buf = io.BytesIO()
+    qr.save(buf, format="PNG")
+    qr_b64 = base64.b64encode(buf.getvalue()).decode("utf-8")
+    qr_svg = f"<img src='data:image/png;base64,{qr_b64}' alt='QR code' style='width:160px'>"
     vs = db.execute("SELECT id, reg, type, ownership_type FROM vehicles WHERE tenant_id=? AND household_id=? ORDER BY type DESC, created_at DESC", (g.tenant['id'], hid)).fetchall()
     rset2 = db.execute("SELECT value FROM settings WHERE tenant_id=? AND key='max_resident_vehicles'", (g.tenant['id'],)).fetchone()
     max_res = int(rset2['value']) if rset2 else 1
@@ -624,7 +677,7 @@ def admin_billing_csv():
     hh_count = db.execute("SELECT COUNT(*) AS c FROM households WHERE tenant_id=?", (g.tenant['id'],)).fetchone()['c']
     amount = unit_price * hh_count
 
-    si = StringIO()
+    si = io.StringIO()
     w = csv.writer(si)
     w.writerow(['tenant', 'month', 'households', 'unit_price', 'amount'])
     w.writerow([g.tenant['slug'], month, hh_count, f"{unit_price:.2f}", f"{amount:.2f}"])

@@ -35,15 +35,27 @@
     <h3>Användare</h3>
     <ul>
       {% for r in residents %}
-        <li>{{ r['email'] }} • {{ r['role'] }}</li>
+      <li class="row" style="justify-content:space-between">
+        <div>{{ r['email'] }} • {{ r['role'] }}</div>
+        <form method="post" action="{{ url_for('admin_remove_resident', hid=household.id, uid=r['id'], t=tenant.slug) }}" onsubmit="return confirm('Ta bort {{ r['email'] }} från hushållet?');">
+          <button class="btn btn-ghost">Ta bort</button>
+        </form>
+      </li>
       {% else %}
-        <li>Inga registrerade användare</li>
+      <li>Inga registrerade användare</li>
       {% endfor %}
     </ul>
 
-    <form method="post" action="{{ url_for('admin_add_resident', hid=household.id, t=tenant.slug) }}" class="stack">
-      <input type="email" name="new_email" placeholder="E-postadress">
+    <form method="post" action="{{ url_for('admin_add_resident', hid=household.id, t=tenant.slug) }}" class="stack" style="margin-top:10px">
+      <input type="email" name="new_email" placeholder="E-postadress" required>
       <button class="btn btn-primary">+ Lägg till användare</button>
+    </form>
+  </div>
+
+  <div class="card">
+    <h3>Radera hushåll</h3>
+    <form method="post" action="{{ url_for('admin_delete_household', hid=household.id, t=tenant.slug) }}" onsubmit="return confirm('Vill du verkligen radera hushållet {{ household.name }}? Alla fordon och användare tas bort.');">
+      <button class="btn btn-danger">Radera hushåll</button>
     </form>
   </div>
 </div>
