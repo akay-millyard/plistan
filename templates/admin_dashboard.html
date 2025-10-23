@@ -3,9 +3,15 @@
 <div class="stack">
   <div class="card">
     <h2>Admin – {{ tenant['name'] }}</h2>
+    {% if current_user.role == 'superadmin' %}
+    <div style="margin-bottom: 12px;">
+      <a href="{{ url_for('root_dashboard') }}" class="btn btn-ghost">← Tillbaka till superadmin</a>
+    </div>
+    {% endif %}
     <div class="row">
       <a class="btn btn-primary" href="{{ url_for('admin_create_household') }}?t={{ tenant['slug'] }}">Skapa hushåll</a>
       <a class="btn" href="{{ url_for('admin_settings') }}?t={{ tenant['slug'] }}">Inställningar</a>
+      <a class="btn" href="{{ url_for('admin_users') }}?t={{ tenant['slug'] }}">Användare</a>
       <a class="btn" href="{{ url_for('export_vehicles_csv') }}?t={{ tenant['slug'] }}">Exportera fordon (CSV)</a>
       {# Kontroll-länken borttagen – nås via flytande FAB #}
     </div>
@@ -21,7 +27,9 @@
     <ul>
       {% for h in households %}
         <li style="margin-bottom:10px">
-          <strong>{{ h['name'] }}</strong> <span class="badge">kod {{ h['invite_code'] }}</span>
+          <strong>{{ h['name'] }}</strong>
+          <a class="btn btn-ghost" href="{{ url_for('admin_manage_household', hid=h['id'], t=tenant['slug']) }}">Hantera</a>
+          <span class="badge">kod {{ h['invite_code'] }}</span>
           {% if h['vehicles']|length %}
             <ul>
               {% for v in h['vehicles'] %}
