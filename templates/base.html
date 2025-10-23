@@ -1,14 +1,20 @@
 <!doctype html>
 <html lang="sv">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>P-Listan</title>
-  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
-  {% if tenant and tenant['primary_color'] %}
-  <style>:root{ --brand: {{ tenant['primary_color'] }}; }</style>
-  {% endif %}
-</head>
+{% if not login_page %}
+<header class="topbar">
+  <div class="left">
+    <span class="logo">P-listan</span>
+  </div>
+  <div class="right">
+    {% if current_user %}
+      <span class="muted">{{ current_user.email }}</span>
+      <a href="{{ url_for('logout') }}" class="btn btn-ghost">Logga ut</a>
+    {% else %}
+      <a href="{{ url_for('login') }}" class="btn btn-ghost">Logga in</a>
+    {% endif %}
+  </div>
+</header>
+{% endif %}
 <body>
 <header>
   <div class="header-inner">

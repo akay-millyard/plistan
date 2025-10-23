@@ -94,3 +94,17 @@ CREATE TABLE IF NOT EXISTS vehicle_changes (
   FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
   FOREIGN KEY (household_id) REFERENCES households(id) ON DELETE CASCADE
 );
+
+-- Koppling användare <-> föreningar
+CREATE TABLE IF NOT EXISTS user_tenants (
+  user_id     INTEGER NOT NULL,
+  tenant_id   INTEGER NOT NULL,
+  role        TEXT NOT NULL CHECK(role IN ('resident','admin')),
+  PRIMARY KEY (user_id, tenant_id, role),
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+  FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE
+);
+
+-- Index för snabba lookup
+CREATE INDEX IF NOT EXISTS idx_user_tenants_user ON user_tenants(user_id);
+CREATE INDEX IF NOT EXISTS idx_user_tenants_tenant ON user_tenants(tenant_id);

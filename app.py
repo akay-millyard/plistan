@@ -155,7 +155,7 @@ def login():
         if u and check_password_hash(u['pw_hash'], pw):
             session['uid'] = u['id']; flash('Inloggad.'); return redirect(url_for('home'))
         flash('Fel e-post eller lösenord.')
-    return render_template('auth_login.html')
+    return render_template("auth_login.html", login_page=True)
 
 @app.get('/logout')
 def logout():
