@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>P-Listan</title>
-<link rel="stylesheet" href="{{ url_for('static', filename='static.css') }}?v={{ version }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='static.css') }}?v={{ version }}">
   {% if tenant and tenant['primary_color'] %}
   <style>:root{ --brand: {{ tenant['primary_color'] }}; }</style>
   {% endif %}
@@ -41,7 +41,6 @@
   </footer>
 {% if g.user and g.user['role'] in ['admin'] and request.endpoint != 'status_page' %}
   <a class="fab" href="{{ url_for('status_page') }}{% if tenant_slug %}?t={{ tenant_slug }}{% endif %}" aria-label="Öppna Kontroll">
-    <!-- Liten “kamera/scan”-ikon i SVG -->
     <svg width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden="true">
       <path d="M4 7V5a1 1 0 0 1 1-1h2M18 4h1a1 1 0 0 1 1 1v2M4 17v2a1 1 0 0 0 1 1h2M18 20h1a1 1 0 0 0 1-1v-2" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
       <rect x="6.5" y="8.5" width="11" height="7" rx="2.5" stroke="currentColor"/>
