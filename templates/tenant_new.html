@@ -1,29 +1,121 @@
 {% extends "base.html" %}
 {% block content %}
-<div class="card">
-<h2>Skapa ny förening (superadmin)</h2>
-<form method="post" class="stack">
-  <div>
-    <label for="name">Föreningens namn</label>
-    <input id="name" name="name" required>
+<div class="stack">
+
+  <div class="card" style="max-width:720px">
+    <h2>Skapa ny förening (superadmin)</h2>
+    <p class="muted">En adminanvändare skapas automatiskt med ett starkt, autogenererat lösenord.</p>
+
+    <form method="post" class="stack" id="tenantForm" autocomplete="off">
+      <div>
+        <label for="name">Föreningens namn</label>
+        <input id="name" name="name" placeholder="t.ex. Brf Solgläntan" required>
+        <small class="muted">Namnet visas för boende och kontrollanter.</small>
+      </div>
+
+      <div>
+        <label for="slug">Slug (t.ex. <code>solglantan</code>)</label>
+        <input id="slug"
+               name="slug"
+               pattern="^[a-z0-9-]{3,}$"
+               title="Endast a–z, 0–9 och bindestreck. Minst 3 tecken."
+               placeholder="solglantan"
+               required>
+        <small class="muted">Används i länkar, t.ex. <code>?t=solglantan</code>. Endast små bokstäver, siffror och “-”.</small>
+      </div>
+
+      <div>
+        <label for="admin_email">Admin e-post</label>
+        <input id="admin_email" name="admin_email" type="email" placeholder="admin@foreningen.se" required>
+        <small class="muted">Admin får åtkomst till adminpanelen för denna förening.</small>
+      </div>
+
+      <button class="btn btn-primary" type="submit" style="margin-top:8px;">Skapa förening + admin</button>
+    </form>
   </div>
-  <div>
-    <label for="slug">Slug (t.ex. solglantan)</label>
-    <input id="slug" name="slug" pattern="[a-z0-9-]{3,}" required>
+
+  {% if created %}
+  <div class="card" style="max-width:720px">
+    <h3>Förening skapad</h3>
+
+    <div class="row" style="gap:12px; flex-wrap:wrap; align-items:center;">
+      <div><strong>{{ tenant.name }}</strong></div>
+      <div class="badge"><code id="slugOut">{{ tenant.slug }}</code></div>
+      <button class="btn btn-ghost" type="button" onclick="copyTxt('#slugOut')">Kopiera slug</button>
+    </div>
+
+    <div class="row" style="gap:12px; flex-wrap:wrap; align-items:center; margin-top:8px;">
+      <div>Admin: <strong id="adminEmailOut">{{ admin_email }}</strong></div>
+      {% if admin_password %}
+        <div>Lösenord: <code id="adminPwdOut">{{ admin_password }}</code></div>
+        <button class="btn btn-ghost" type="button" onclick="copyTxt('#adminPwdOut')">Kopiera lösen</button>
+      {% else %}
+        <div class="muted">Lösenord oförändrat (e-post fanns redan).</div>
+      {% endif %}
+    </div>
+
+    <div class="row" style="gap:12px; flex-wrap:wrap; align-items:center; margin-top:12px;">
+      <a class="btn" id="adminPanelLink" href="{{ url_for('admin_dashboard') }}?t={{ tenant.slug }}" target="_blank" rel="noopener">Öppna adminpanel</a>
+      <button class="btn btn-ghost" type="button" onclick="copyHref('#adminPanelLink')">Kopiera adminlänk</button>
+    </div>
+
+    <small class="muted" style="display:block; margin-top:10px;">
+      Tips: skicka adminlänk och inloggning till adminanvändaren.
+    </small>
   </div>
-  <div>
-    <label for="admin_email">Admin e-post</label>
-    <input id="admin_email" name="admin_email" type="email" required>
-  </div>
-  <button class="btn btn-primary" type="submit">Skapa förening + admin</button>
-</form>
+  {% endif %}
+
 </div>
 
-{% if created %}
-  <div class="card" style="margin-top:16px">
-    <h3>Skapad förening: {{ tenant.name }} ({{ tenant.slug }})</h3>
-    <p>Admin: <strong>{{ admin_email }}</strong></p>
-    <p>Lösenord (autogenererat, visa en gång): <code>{{ admin_password }}</code></p>
-  </div>
-{% endif %}
+<script>
+(function(){
+  const name = document.getElementById('name');
+  const slug = document.getElementById('slug');
+
+  // Auto-derivera slug från namn (kan skrivas över manuellt)
+  function toSlug(s){
+    return s
+      .toLowerCase()
+      .normalize('NFD').replace(/[\u0300-\u036f]/g,'') // ta bort diakritiska tecken
+      .replace(/å/g,'a').replace(/ä/g,'a').replace(/ö/g,'o')
+      .replace(/[^a-z0-9]+/g,'-')
+      .replace(/^-+|-+$/g,'')
+      .slice(0,50);
+  }
+  name?.addEventListener('input', () => {
+    if (!slug.dataset.touched) slug.value = toSlug(name.value);
+  });
+  slug?.addEventListener('input', () => { slug.dataset.touched = '1'; });
+
+  // Kopiera-hjälpare
+  window.copyTxt = function(sel){
+    const el = document.querySelector(sel);
+    if(!el) return;
+    const txt = (el.innerText || el.textContent || '').trim();
+    navigator.clipboard?.writeText(txt).then(()=>toast('Kopierat!')).catch(()=>fallbackCopy(txt));
+  }
+  window.copyHref = function(sel){
+    const el = document.querySelector(sel);
+    if(!el) return;
+    const href = el.getAttribute('href');
+    navigator.clipboard?.writeText(href).then(()=>toast('Länk kopierad!')).catch(()=>fallbackCopy(href));
+  }
+  function fallbackCopy(text){
+    const ta = document.createElement('textarea');
+    ta.value = text; document.body.appendChild(ta);
+    ta.select(); document.execCommand('copy'); document.body.removeChild(ta);
+    toast('Kopierat.');
+  }
+  function toast(msg){
+    const t = document.createElement('div');
+    t.textContent = msg;
+    t.style.position='fixed'; t.style.bottom='20px'; t.style.left='50%';
+    t.style.transform='translateX(-50%)'; t.style.padding='8px 12px';
+    t.style.background='var(--ink)'; t.style.color='#fff';
+    t.style.borderRadius='10px'; t.style.boxShadow='var(--shadow)';
+    document.body.appendChild(t);
+    setTimeout(()=>t.remove(), 1400);
+  }
+})();
+</script>
 {% endblock %}

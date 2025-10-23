@@ -27,3 +27,26 @@ input:focus,select:focus{border-color:var(--brand);box-shadow:0 0 0 4px rgba(14,
 .badge{display:inline-block;padding:6px 10px;border-radius:999px;font-size:12px;border:1px solid rgba(255,255,255,.12);color:#9ca3af}
 footer{color:#9ca3af;font-size:12px;padding:18px;text-align:center;border-top:1px solid rgba(255,255,255,.06)}
 .version{opacity:.7;font-size:12px;margin-left:8px}
+.fab{
+  position: fixed;
+  right: 20px;
+  bottom: 20px;
+  width: 56px;
+  height: 56px;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  background: linear-gradient(135deg,var(--brand),var(--brand-strong));
+  color: #fff;
+  box-shadow: var(--shadow);
+  border: none;
+  text-decoration: none;
+}
+.fab:hover{ transform: translateY(-1px); filter: brightness(1.05); }
+.fab:active{ transform: translateY(0); filter: brightness(0.98); }
+.version-tag {
+  font-size: 0.8em;
+  font-weight: 500;
+  color: var(--muted);
+  margin-left: 6px;
+}

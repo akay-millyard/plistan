@@ -2,19 +2,21 @@
 {% block content %}
 <div class="stack">
   <div class="card">
-    <h2>Superadmin – Dashboard</h2>
+    <h2>Superadmin – Dashboard <span class="version-tag">v3.1.0</span></h2>
     <p>Antal föreningar: <strong>{{ tenants|length }}</strong></p>
     <div class="row">
       <a class="btn btn-primary" href="{{ url_for('new_tenant') }}">Skapa ny förening</a>
     </div>
   </div>
+
   <div class="card">
     <h3>Föreningar</h3>
     <ul>
       {% for t in tenants %}
-        <li class="row" style="justify-content:space-between">
+        <li class="row" style="justify-content:space-between; align-items:center; margin-bottom:10px;">
           <div>
-            <strong>{{ t['name'] }}</strong> <span class="badge">{{ t['slug'] }}</span>
+            <strong>{{ t['name'] }}</strong>
+            <span class="badge">{{ t['slug'] }}</span>
           </div>
           <div class="row">
             <a class="btn" href="{{ url_for('admin_dashboard') }}?t={{ t['slug'] }}">Visa adminpanel</a>

@@ -1,22 +1,93 @@
 {% extends "base.html" %}
 {% block content %}
-<div class="card">
-<h2>Gästparkering för {{ household.name }}</h2>
-{% if error %}<p class="status unknown">{{ error }}</p>{% endif %}
-<form method="post" class="stack">
-  <input type="hidden" name="token" value="{{ token }}">
-  <div>
-    <label for="reg">Registreringsnummer</label>
-    <input id="reg" name="reg" required placeholder="ABC123 eller ABC12A">
+<div class="stack">
+
+  <div class="card" style="max-width:520px">
+    <h2>Gästparkering · {{ household.name }}</h2>
+    <p class="muted">Fyll i registreringsnummer och giltighetstid.</p>
+
+    {% if error %}
+      <div class="error-box">{{ error }}</div>
+    {% endif %}
+
+    <form method="post" class="stack" autocomplete="off" id="guestForm">
+      <input type="hidden" name="token" value="{{ token }}">
+
+      <div>
+        <label for="reg">Registreringsnummer</label>
+        <input id="reg"
+               name="reg"
+               inputmode="latin"
+               autocapitalize="characters"
+               placeholder="ABC123 eller ABC12A"
+               required
+               pattern="^[A-Za-zÅÄÖåäö]{3}(?:\d{3}|\d{2}[A-Za-zÅÄÖåäö])$"
+               title="Ange tre bokstäver följt av tre siffror, eller två siffror + en bokstav (t.ex. ABC123 eller ABC12A)">
+        <small class="muted">Bokstäver spelar ingen roll gemener/VERSALER – vi konverterar automatiskt.</small>
+      </div>
+
+      <div>
+        <label for="hours">Giltighet (timmar)</label>
+        <input id="hours"
+               name="hours"
+               type="number"
+               min="1"
+               max="{{ max_hours }}"
+               value="{{ max_hours }}"
+               required>
+        <small class="muted">Max {{ max_hours }} tim{{ 'me' if max_hours>1 else 'me' }} enligt föreningens regler.</small>
+      </div>
+
+      <button class="btn btn-primary" type="submit" id="submitBtn">Registrera gäst</button>
+    </form>
   </div>
-  <div>
-    <label for="hours">Giltighet (timmar)</label>
-    <input id="hours" name="hours" type="number" min="1" max="{{ max_hours }}" value="{{ max_hours }}" required>
+
+  {% if valid_to %}
+  <div class="card success-card" style="max-width:520px">
+    <h3>✅ Gäst registrerad</h3>
+    <p class="status allowed">Giltig till <strong>{{ valid_to }}</strong>.</p>
+    <p class="muted">Behåll sidan eller ta en skärmdump som kvitto.</p>
   </div>
-  <button class="btn btn-primary" type="submit">Registrera gäst</button>
-</form>
-{% if valid_to %}
-  <p class="status allowed" style="margin-top:10px">Gästen är registrerad till {{ valid_to }}.</p>
-{% endif %}
+  {% endif %}
+
 </div>
+
+<style>
+.error-box{
+  margin: 8px 0 4px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: rgba(255,0,0,.08);
+  color:#a40000; font-weight:600;
+}
+.success-card h3{ margin-bottom:6px; }
+#reg{
+  letter-spacing: .08em;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+</style>
+
+<script>
+(function(){
+  const reg = document.getElementById('reg');
+  const form = document.getElementById('guestForm');
+  const btn  = document.getElementById('submitBtn');
+
+  // auto: ta bort mellanslag/streck och gör VERSALER
+  reg.addEventListener('input', () => {
+    let v = reg.value.replace(/[\s-]/g,'').toUpperCase();
+    // begränsa till 7 tecken (ABC12A = 6, men begränsning för säkerhet)
+    if (v.length > 7) v = v.slice(0,7);
+    reg.value = v;
+  });
+
+  // enkel dubbel-submit-guard
+  form.addEventListener('submit', () => {
+    btn.disabled = true;
+    btn.textContent = 'Registrerar...';
+    setTimeout(()=>{ btn.disabled=false; btn.textContent='Registrera gäst'; }, 5000);
+  });
+})();
+</script>
 {% endblock %}

@@ -1,23 +1,150 @@
 {% extends "base.html" %}
 {% block content %}
-<div class="card">
-<h2>Kontroll / Status</h2>
-<form method="get" class="row">
-  <input type="hidden" name="t" value="{{ tenant_slug }}">
-  <div style="flex:1">
-    <label for="reg">Registreringsnummer</label>
-    <input id="reg" name="reg" value="{{ reg or '' }}" placeholder="ABC123" autofocus>
-  </div>
-  <button class="btn btn-primary" type="submit">Kontrollera</button>
-</form>
+<div class="stack">
 
-{% if result %}
-  <div class="status {{ result['status'] }}" style="margin-top:12px">
-    <p>Status: <strong>{{ result['status'] }}</strong></p>
-    {% if result['type'] %}<p>Typ: {{ result['type'] }}</p>{% endif %}
-    {% if result['household'] %}<p>Hushåll: {{ result['household'] }}</p>{% endif %}
-    {% if result['valid_to'] %}<p>Giltig till: {{ result['valid_to'] }}</p>{% endif %}
+  <div class="card" style="max-width:640px">
+    <h2>Kontroll / Status</h2>
+    <form method="get" class="row" id="statusForm" autocomplete="off" style="gap:12px; flex-wrap:wrap;">
+      <input type="hidden" name="t" value="{{ tenant_slug }}">
+      <div style="flex:1; min-width:240px">
+        <label for="reg">Registreringsnummer</label>
+        <input id="reg"
+               name="reg"
+               value="{{ reg or '' }}"
+               placeholder="ABC123 eller ABC12A"
+               autofocus
+               inputmode="latin"
+               autocapitalize="characters"
+               pattern="^[A-Za-zÅÄÖåäö]{3}(?:\d{3}|\d{2}[A-Za-zÅÄÖåäö])$"
+               title="Tre bokstäver + tre siffror, eller två siffror + en bokstav">
+        <small class="muted">Mellanslag/streck ignoreras. Vi konverterar till versaler automatiskt.</small>
+      </div>
+      <button class="btn btn-primary" type="submit" id="checkBtn">Kontrollera</button>
+
+      <!-- (Valfritt) QR-skanning om kontrollanten har QR-kod som innehåller regnumret -->
+      <button class="btn btn-ghost" type="button" id="scanBtn">Skanna QR</button>
+    </form>
+
+    <div id="scanWrap" class="scan-wrap" hidden>
+      <video id="video" playsinline muted></video>
+      <div class="scan-tip">Rikta mot QR-koden…</div>
+      <button class="btn" type="button" id="stopBtn" style="margin-top:8px;">Stoppa skanning</button>
+    </div>
+
+    {% if result %}
+      <div class="status-box {{ result['status'] }}" style="margin-top:16px">
+        <div class="row" style="justify-content:space-between; align-items:center;">
+          <div>
+            <div class="badge {{ result['status'] }}">{{ result['status']|capitalize }}</div>
+            {% if result['type'] %}<span class="badge light">{{ result['type'] }}</span>{% endif %}
+          </div>
+          {% if reg %}<strong style="letter-spacing:.06em">{{ reg }}</strong>{% endif %}
+        </div>
+        <div class="stack" style="margin-top:8px">
+          {% if result['household'] %}<div>Hushåll: <strong>{{ result['household'] }}</strong></div>{% endif %}
+          {% if result['valid_to'] %}<div>Giltig till: <strong>{{ result['valid_to'] }}</strong></div>{% endif %}
+          {% if result['status']=='unknown' %}<div class="muted">Ingen träff i listan.</div>{% endif %}
+        </div>
+      </div>
+    {% endif %}
   </div>
-{% endif %}
+
 </div>
+
+<style>
+.status-box{ padding:12px; border-radius:12px; background:#f6f7f9; }
+.status-box.allowed{ background:rgba(0,160,80,.08); border:1px solid rgba(0,160,80,.25); }
+.status-box.expired{ background:rgba(220,160,0,.08); border:1px solid rgba(220,160,0,.25); }
+.status-box.unknown{ background:rgba(110,120,130,.08); border:1px solid rgba(110,120,130,.25); }
+.badge.light{ background:#eef1f4; color:#39424e; }
+.badge.allowed{ background:#19a974; color:#fff; }
+.badge.expired{ background:#c38f00; color:#fff; }
+.badge.unknown{ background:#6b7280; color:#fff; }
+#reg{ text-transform:uppercase; font-weight:700; letter-spacing:.08em; }
+
+/* QR-scan area */
+.scan-wrap{
+  margin-top:10px; border-radius:12px; overflow:hidden;
+  border:1px solid #e5e7eb; position:relative;
+}
+#video{ width:100%; max-height:320px; background:#000; }
+.scan-tip{
+  position:absolute; left:12px; bottom:12px; background:rgba(0,0,0,.55);
+  color:#fff; padding:6px 8px; border-radius:8px; font-size:.9em;
+}
+</style>
+
+<script>
+(function(){
+  const reg = document.getElementById('reg');
+  const form = document.getElementById('statusForm');
+  const btn  = document.getElementById('checkBtn');
+
+  // Auto-uppercase och städa bort tecken
+  if (reg){
+    reg.addEventListener('input', () => {
+      let v = reg.value.replace(/[\s-]/g,'').toUpperCase();
+      if (v.length > 7) v = v.slice(0,7);
+      reg.value = v;
+    });
+  }
+
+  // Dubbelklick-skydd
+  form?.addEventListener('submit', () => {
+    btn.disabled = true; btn.textContent = 'Kontrollerar…';
+    setTimeout(()=>{ btn.disabled=false; btn.textContent='Kontrollera'; }, 3000);
+  });
+
+  // --- Enkel QR-skanning (frivilligt): kräver att QR:n innehåller regnumret som text ---
+  const scanBtn = document.getElementById('scanBtn');
+  const stopBtn = document.getElementById('stopBtn');
+  const wrap = document.getElementById('scanWrap');
+  const video = document.getElementById('video');
+  let stream, rafId, detector;
+
+  async function startScan(){
+    if (!('BarcodeDetector' in window)) {
+      alert('QR-skanning stöds inte i denna webbläsare. Ange regnummer manuellt.');
+      return;
+    }
+    try{
+      detector = new BarcodeDetector({ formats: ['qr_code'] });
+      stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+      video.srcObject = stream;
+      await video.play();
+      wrap.hidden = false;
+      tick();
+    }catch(e){
+      console.error(e);
+      alert('Kunde inte starta kamera. Ange regnummer manuellt.');
+    }
+  }
+  async function tick(){
+    try{
+      const codes = await detector.detect(video);
+      if (codes && codes.length){
+        const payload = (codes[0].rawValue || '').trim().toUpperCase();
+        // hämta första "registreringsliknande" token om länken innehåller mer text
+        const match = payload.match(/[A-ZÅÄÖ]{3}(?:\d{3}|\d{2}[A-ZÅÄÖ])/);
+        if (match){
+          reg.value = match[0];
+          stopScan();
+          form.submit();
+          return;
+        }
+      }
+    }catch(e){}
+    rafId = requestAnimationFrame(tick);
+  }
+  function stopScan(){
+    wrap.hidden = true;
+    cancelAnimationFrame(rafId);
+    video.pause();
+    if (stream){ stream.getTracks().forEach(t => t.stop()); }
+  }
+
+  scanBtn?.addEventListener('click', startScan);
+  stopBtn?.addEventListener('click', stopScan);
+})();
+</script>
 {% endblock %}

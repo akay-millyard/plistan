@@ -10,31 +10,23 @@
   {% endif %}
 </head>
 <body>
-  <header>
-    <div class="header-inner">
-      <div class="logo">
-        <div class="logo-badge">P</div>
-        P-Listan <span class="version">{{ version }}</span>
-      </div>
-      <nav style="margin-left:auto">
-        {% if g.user %}
-          {% if g.user['role'] == 'resident' %}
-            <a href="{{ url_for('home') }}">Min parkering</a>
-          {% elif g.user['role'] == 'admin' %}
-            <a href="{{ url_for('home') }}">Admin</a>
-            <a href="{{ url_for('status_page') }}{% if tenant_slug %}?t={{ tenant_slug }}{% endif %}">Kontroll</a>
-          {% elif g.user['role'] == 'superadmin' %}
-            <a href="{{ url_for('home') }}">Superadmin</a>
-            <a href="{{ url_for('new_tenant') }}">Skapa förening</a>
-          {% endif %}
-          <span class="badge">{{ g.user['email'] }} • {{ g.user['role'] }}</span>
-          <a href="{{ url_for('logout') }}">Logga ut</a>
-        {% else %}
-          <a href="{{ url_for('login') }}{% if tenant_slug %}?t={{ tenant_slug }}{% endif %}">Logga in</a>
-        {% endif %}
-      </nav>
+<header>
+  <div class="header-inner">
+    <div class="logo">
+      <div class="logo-badge">P</div>
+      P-Listan <span class="version">{{ version }}</span>
     </div>
-  </header>
+
+    <div style="margin-left:auto" class="row">
+      {% if g.user %}
+        <span class="badge">{{ g.user['email'] }} • {{ g.user['role'] }}</span>
+        <a class="btn btn-ghost" href="{{ url_for('logout') }}">Logga ut</a>
+      {% else %}
+        <a class="btn btn-primary" href="{{ url_for('login') }}{% if tenant_slug %}?t={{ tenant_slug }}{% endif %}">Logga in</a>
+      {% endif %}
+    </div>
+  </div>
+</header>
   <main>
     {% with messages = get_flashed_messages() %}
       {% if messages %}
@@ -46,5 +38,15 @@
   <footer>
     <p>Prototype av Millyard – multi-tenant MVP.</p>
   </footer>
+{% if g.user and g.user['role'] in ['admin'] and request.endpoint != 'status_page' %}
+  <a class="fab" href="{{ url_for('status_page') }}{% if tenant_slug %}?t={{ tenant_slug }}{% endif %}" aria-label="Öppna Kontroll">
+    <!-- Liten “kamera/scan”-ikon i SVG -->
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path d="M4 7V5a1 1 0 0 1 1-1h2M18 4h1a1 1 0 0 1 1 1v2M4 17v2a1 1 0 0 0 1 1h2M18 20h1a1 1 0 0 0 1-1v-2" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+      <rect x="6.5" y="8.5" width="11" height="7" rx="2.5" stroke="currentColor"/>
+      <circle cx="12" cy="12" r="2" fill="currentColor"/>
+    </svg>
+  </a>
+{% endif %}
 </body>
 </html>

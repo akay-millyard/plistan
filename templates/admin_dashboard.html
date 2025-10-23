@@ -7,7 +7,7 @@
       <a class="btn btn-primary" href="{{ url_for('admin_create_household') }}?t={{ tenant['slug'] }}">Skapa hushåll</a>
       <a class="btn" href="{{ url_for('admin_settings') }}?t={{ tenant['slug'] }}">Inställningar</a>
       <a class="btn" href="{{ url_for('export_vehicles_csv') }}?t={{ tenant['slug'] }}">Exportera fordon (CSV)</a>
-      <a class="btn" href="{{ url_for('status_page') }}?t={{ tenant['slug'] }}">Kontroll</a>
+      {# Kontroll-länken borttagen – nås via flytande FAB #}
     </div>
   </div>
 

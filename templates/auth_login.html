@@ -1,17 +1,50 @@
 {% extends "base.html" %}
 {% block content %}
-<div class="card">
-  <h2>Logga in</h2>
-  <form method="post" class="stack">
-    <div>
-      <label for="email">E-post</label>
-      <input id="email" name="email" type="email" required>
-    </div>
-    <div>
-      <label for="password">Lösenord</label>
-      <input id="password" name="password" type="password" required>
-    </div>
-    <button class="btn btn-primary" type="submit">Logga in</button>
-  </form>
+<div class="center-screen">
+  <div class="card login-card">
+    <h2>Logga in</h2>
+    <p class="muted">Ange dina uppgifter för att komma åt systemet.</p>
+
+    <form method="post" class="stack" autocomplete="off">
+      <div>
+        <label for="email">E-postadress</label>
+        <input id="email" name="email" type="email" placeholder="namn@exempel.se" required>
+      </div>
+      <div>
+        <label for="password">Lösenord</label>
+        <input id="password" name="password" type="password" placeholder="••••••••" required>
+      </div>
+
+      <button class="btn btn-primary" type="submit" style="margin-top:12px;">Logga in</button>
+    </form>
+
+    {% if error %}
+      <div class="error-box">{{ error }}</div>
+    {% endif %}
+  </div>
 </div>
+
+<style>
+.center-screen {
+  min-height: calc(100vh - 120px);
+  display: grid;
+  place-items: center;
+}
+.login-card {
+  max-width: 380px;
+  width: 90%;
+  padding: 32px;
+  text-align: left;
+  box-shadow: var(--shadow);
+}
+.error-box {
+  margin-top: 12px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: rgba(255,0,0,0.08);
+  color: #b10000;
+  font-weight: 500;
+  text-align: center;
+}
+</style>
 {% endblock %}

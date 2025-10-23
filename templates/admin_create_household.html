@@ -1,32 +1,94 @@
 {% extends "base.html" %}
 {% block content %}
-<div class="card">
-<h2>Admin: Skapa hushåll – {{ tenant['name'] }}</h2>
-<form method="post" class="stack">
-  <div>
-    <label for="name">Namn (t.ex. Hus 18)</label>
-    <input id="name" name="name" required>
+<div class="stack">
+
+  <div class="card">
+    <h2>Admin – Skapa hushåll · {{ tenant['name'] }}</h2>
+
+    <form method="post" class="stack" autocomplete="off">
+      <div>
+        <label for="name">Hushållsnamn</label>
+        <input id="name" name="name" placeholder="t.ex. Hus 18" required>
+      </div>
+
+      <div>
+        <label for="resident_email">Boendekonto (valfritt)</label>
+        <input id="resident_email" name="resident_email" type="email" placeholder="namn@exempel.se">
+        <small class="muted">Skapar en boendeanvändare kopplad till hushållet med auto-genererat lösenord.</small>
+      </div>
+
+      <button class="btn btn-primary" type="submit">Skapa hushåll</button>
+    </form>
   </div>
-  <div>
-    <label for="resident_email">(Valfritt) Skapa boendekonto: e-post</label>
-    <input id="resident_email" name="resident_email" type="email">
+
+  {% if created %}
+  <div class="card">
+    <h3>Hushåll skapat</h3>
+
+    <div class="row" style="gap:12px; align-items:center;">
+      <div>Hushåll: <strong>{{ household.name }}</strong></div>
+      <div class="badge">kod <code id="inviteCode">{{ household.invite_code }}</code></div>
+      <button class="btn btn-ghost" type="button" onclick="copyTxt('#inviteCode')">Kopiera kod</button>
+    </div>
+
+    {% if resident_email %}
+      <div class="row" style="gap:12px; align-items:center; margin-top:8px;">
+        <div>Boende-konto: <strong>{{ resident_email }}</strong></div>
+        <div>Lösenord: <code id="residentPwd">{{ resident_password }}</code></div>
+        <button class="btn btn-ghost" type="button" onclick="copyTxt('#residentPwd')">Kopiera lösen</button>
+      </div>
+      <small class="muted">Tips: Skicka inloggning + länk till boendevyn nedan.</small>
+    {% endif %}
+
+    <div class="stack" style="margin-top:12px">
+      <div class="row" style="gap:12px; flex-wrap:wrap;">
+        <a class="btn" id="residentLink" href="{{ resident_link }}" target="_blank" rel="noopener">Öppna boendevy</a>
+        <button class="btn btn-ghost" type="button" onclick="copyHref('#residentLink')">Kopiera boendelänk</button>
+
+        <a class="btn" id="guestLink" href="{{ guest_link }}" target="_blank" rel="noopener">Öppna gästlänk</a>
+        <button class="btn btn-ghost" type="button" onclick="copyHref('#guestLink')">Kopiera gästlänk</button>
+      </div>
+
+      {% if qr_svg %}
+        <div style="margin-top:8px">
+          <div class="muted" style="margin-bottom:6px">QR-kod för gästregistrering</div>
+          {{ qr_svg|safe }}
+        </div>
+      {% endif %}
+    </div>
   </div>
-  <button class="btn btn-primary" type="submit">Skapa</button>
-</form>
+  {% endif %}
+
 </div>
 
-{% if created %}
-  <div class="card" style="margin-top:16px">
-    <h3>Skapat hushåll: {{ household.name }}</h3>
-    <p>Hushållskod: <code>{{ household.invite_code }}</code></p>
-    {% if resident_email %}
-      <p>Boende-konto: {{ resident_email }} • Lösenord: <code>{{ resident_password }}</code></p>
-    {% endif %}
-    <div class="row">
-      <a class="btn btn-primary" href="{{ resident_link }}">Boendevy</a>
-      <a class="btn" href="{{ guest_link }}">Gästlänk</a>
-    </div>
-    <div style="margin-top:12px">{{ qr_svg|safe }}</div>
-  </div>
-{% endif %}
+<script>
+function copyTxt(sel){
+  const el = document.querySelector(sel);
+  if(!el) return;
+  const txt = el.innerText || el.textContent;
+  navigator.clipboard?.writeText(txt).then(()=>toast('Kopierat!')).catch(()=>fallbackCopy(txt));
+}
+function copyHref(sel){
+  const el = document.querySelector(sel);
+  if(!el) return;
+  const href = el.getAttribute('href');
+  navigator.clipboard?.writeText(href).then(()=>toast('Länk kopierad!')).catch(()=>fallbackCopy(href));
+}
+function fallbackCopy(text){
+  const ta = document.createElement('textarea');
+  ta.value = text; document.body.appendChild(ta);
+  ta.select(); document.execCommand('copy'); document.body.removeChild(ta);
+  toast('Kopierat.');
+}
+function toast(msg){
+  const t = document.createElement('div');
+  t.textContent = msg;
+  t.style.position='fixed'; t.style.bottom='20px'; t.style.left='50%';
+  t.style.transform='translateX(-50%)'; t.style.padding='8px 12px';
+  t.style.background='var(--ink)'; t.style.color='#fff';
+  t.style.borderRadius='10px'; t.style.boxShadow='var(--shadow)';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(), 1400);
+}
+</script>
 {% endblock %}
