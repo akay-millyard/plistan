@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="stack">
+  <div class="card">
+    <h2>Hantera hushåll – {{ household.name }}</h2>
+
+    <h3>Fordon</h3>
+    <ul>
+      {% for v in vehicles %}
+      <li class="row" style="justify-content:space-between">
+        <div>{{ v['reg'] }} <span class="badge">{{ v['ownership_type'] }}</span></div>
+        <form method="post" onsubmit="return confirm('Ta bort fordonet {{ v['reg'] }}?');">
+          <input type="hidden" name="delete_vehicle" value="{{ v['id'] }}">
+          <button class="btn btn-ghost">Ta bort</button>
+        </form>
+      </li>
+      {% endfor %}
+    </ul>
+
+    <form method="post" class="stack" style="margin-top:10px">
+      <div class="row">
+        <input name="reg" placeholder="Registreringsnummer" required>
+        <select name="ownership_type">
+          <option value="egen">Egen</option>
+          <option value="företag">Företagsbil</option>
+          <option value="lånad">Lånad</option>
+          <option value="hyrbil">Hyrbil</option>
+        </select>
+      </div>
+      <button class="btn btn-primary">+ Lägg till fordon</button>
+    </form>
+  </div>
+
+  <div class="card">
+    <h3>Användare</h3>
+    <ul>
+      {% for r in residents %}
+      <li class="row" style="justify-content:space-between">
+        <div>{{ r['email'] }} • {{ r['role'] }}</div>
+        <form method="post" action="{{ url_for('admin_remove_resident', hid=household.id, uid=r['id'], t=tenant.slug) }}" onsubmit="return confirm('Ta bort {{ r['email'] }} från hushållet?');">
+          <button class="btn btn-ghost">Ta bort</button>
+        </form>
+      </li>
+      {% else %}
+      <li>Inga registrerade användare</li>
+      {% endfor %}
+    </ul>
+
+    <form method="post" action="{{ url_for('admin_add_resident', hid=household.id, t=tenant.slug) }}" class="stack" style="margin-top:10px">
+      <input type="email" name="new_email" placeholder="E-postadress" required>
+      <button class="btn btn-primary">+ Lägg till användare</button>
+    </form>
+  </div>
+
+  <div class="card">
+    <h3>Radera hushåll</h3>
+    <form method="post" action="{{ url_for('admin_delete_household', hid=household.id, t=tenant.slug) }}" onsubmit="return confirm('Vill du verkligen radera hushållet {{ household.name }}? Alla fordon och användare tas bort.');">
+      <button class="btn btn-danger">Radera hushåll</button>
+    </form>
+  </div>
+</div>
+{% endblock %}
