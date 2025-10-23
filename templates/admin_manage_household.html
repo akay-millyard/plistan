@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="stack">
+  <div class="card">
+    <h2>Hantera hushåll – {{ household.name }}</h2>
+
+    <h3>Fordon</h3>
+    <ul>
+      {% for v in vehicles %}
+      <li class="row" style="justify-content:space-between">
+        <div>{{ v['reg'] }} <span class="badge">{{ v['ownership_type'] }}</span></div>
+        <form method="post" onsubmit="return confirm('Ta bort fordonet {{ v['reg'] }}?');">
+          <input type="hidden" name="delete_vehicle" value="{{ v['id'] }}">
+          <button class="btn btn-ghost">Ta bort</button>
+        </form>
+      </li>
+      {% endfor %}
+    </ul>
+
+    <form method="post" class="stack" style="margin-top:10px">
+      <div class="row">
+        <input name="reg" placeholder="Registreringsnummer" required>
+        <select name="ownership_type">
+          <option value="egen">Egen</option>
+          <option value="företag">Företagsbil</option>
+          <option value="lånad">Lånad</option>
+          <option value="hyrbil">Hyrbil</option>
+        </select>
+      </div>
+      <button class="btn btn-primary">+ Lägg till fordon</button>
+    </form>
+  </div>
+
+  <div class="card">
+    <h3>Användare</h3>
+    <ul>
+      {% for r in residents %}
+        <li>{{ r['email'] }} • {{ r['role'] }}</li>
+      {% else %}
+        <li>Inga registrerade användare</li>
+      {% endfor %}
+    </ul>
+
+    <form method="post" action="{{ url_for('admin_add_resident', hid=household.id, t=tenant.slug) }}" class="stack">
+      <input type="email" name="new_email" placeholder="E-postadress">
+      <button class="btn btn-primary">+ Lägg till användare</button>
+    </form>
+  </div>
+</div>
+{% endblock %}
