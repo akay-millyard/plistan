@@ -71,25 +71,19 @@
 
   <div class="card" style="max-width:720px">
     <h3>Gästlänk & QR</h3>
-    <form method="post"
-          action="{{ url_for('resident_new_guest_link') }}?t={{ tenant_slug }}&hid={{ household.id }}"
-          class="row" style="gap:12px; flex-wrap:wrap;">
+    <form method="post" action="{{ url_for('resident_new_guest_link') }}?t={{ tenant_slug }}&hid={{ household.id }}" class="row">
       <div>
-        <label for="hours">Giltighet (timmar)</label>
+        <label for="hours">Max timmar för gäster (1–{{ max_hours }})</label>
         <input id="hours" name="hours" type="number" min="1" max="{{ max_hours }}" value="{{ max_hours }}" required>
-        <small class="muted">Max {{ max_hours }} timmar enligt föreningens regler.</small>
       </div>
-      <button class="btn btn-primary" type="submit" id="guestBtn">Skapa gästlänk</button>
+      <button class="btn btn-primary" type="submit">Skapa gästlänk</button>
     </form>
 
     {% if guest_link %}
-      <div class="row" style="gap:10px; align-items:center; margin-top:10px;">
-        <a class="btn" id="guestLink" href="{{ guest_link }}" target="_blank" rel="noopener">Öppna gästlänk</a>
-        <button class="btn btn-ghost" type="button" onclick="copyHref('#guestLink')">Kopiera länk</button>
-      </div>
-      {% if qr_svg %}
-        <div style="margin-top:10px">{{ qr_svg|safe }}</div>
-      {% endif %}
+      <p style="margin-top:10px">Länk: <a href="{{ guest_link }}">{{ guest_link }}</a></p>
+    {% endif %}
+    {% if qr_svg %}
+      <div style="margin-top:10px">{{ qr_svg|safe }}</div>
     {% endif %}
   </div>
 
@@ -112,14 +106,6 @@
     });
   }
 
-  // disable på gästknappen för att hindra dubbel-submit
-  const gbtn = document.getElementById('guestBtn');
-  if (gbtn){
-    gbtn.form?.addEventListener('submit', () => {
-      gbtn.disabled = true; gbtn.textContent = 'Skapar...';
-      setTimeout(()=>{ gbtn.disabled=false; gbtn.textContent='Skapa gästlänk'; }, 5000);
-    });
-  }
 })();
 
 function askReason(formEl){
@@ -129,18 +115,6 @@ function askReason(formEl){
   return true;
 }
 
-function copyHref(sel){
-  const el = document.querySelector(sel);
-  if(!el) return;
-  const href = el.getAttribute('href');
-  navigator.clipboard?.writeText(href).then(()=>toast('Länk kopierad!')).catch(()=>fallbackCopy(href));
-}
-function fallbackCopy(text){
-  const ta = document.createElement('textarea');
-  ta.value = text; document.body.appendChild(ta);
-  ta.select(); document.execCommand('copy'); document.body.removeChild(ta);
-  toast('Kopierat.');
-}
 function toast(msg){
   const t = document.createElement('div');
   t.textContent = msg;
