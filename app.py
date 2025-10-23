@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 import os, sqlite3, re, secrets, datetime, csv, random, string
+from types import SimpleNamespace
 from io import StringIO, BytesIO
 from flask import Flask, g, render_template, request, redirect, url_for, jsonify, abort, flash, make_response, session
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -7,7 +8,7 @@ import jwt, qrcode
 from qrcode.image.svg import SvgImage
 from functools import wraps
 
-VERSION = "v3.1.0"
+VERSION = "v3.2.0-2025-10-23"
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev-secret-change-me')
@@ -136,7 +137,17 @@ def before_every_request():
 
 @app.context_processor
 def inject_globals():
-    return dict(version=VERSION, tenant=g.tenant, tenant_slug=(g.tenant['slug'] if g.tenant else None))
+    tenant = getattr(g, 'tenant', None)
+    tenant_slug = tenant['slug'] if tenant else None
+    user = getattr(g, 'user', None)
+    current_user = SimpleNamespace(**dict(user)) if user else None
+    return dict(
+        version=VERSION,
+        tenant=tenant,
+        tenant_slug=tenant_slug,
+        current_user=current_user,
+        login_page=False,
+    )
 
 def require_tenant_or_redirect():
     if not g.tenant:

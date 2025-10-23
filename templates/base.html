@@ -13,11 +13,12 @@
 {% if not login_page %}
 <header class="topbar">
   <div class="left">
-    <span class="logo">P-listan</span>
+    <span class="logo">P-Listan</span>
+    <span class="badge">{{ version }}</span>
   </div>
   <div class="right">
     {% if current_user %}
-      <span class="muted">{{ current_user.email }}</span>
+      <span class="muted">{{ current_user.email }} • {{ current_user.role }}</span>
       <a href="{{ url_for('logout') }}" class="btn btn-ghost">Logga ut</a>
     {% else %}
       <a href="{{ url_for('login') }}" class="btn btn-ghost">Logga in</a>
@@ -25,23 +26,6 @@
   </div>
 </header>
 {% endif %}
-<header>
-  <div class="header-inner">
-    <div class="logo">
-      <div class="logo-badge">P</div>
-      P-Listan <span class="version">{{ version }}</span>
-    </div>
-
-    <div style="margin-left:auto" class="row">
-      {% if g.user %}
-        <span class="badge">{{ g.user['email'] }} • {{ g.user['role'] }}</span>
-        <a class="btn btn-ghost" href="{{ url_for('logout') }}">Logga ut</a>
-      {% else %}
-        <a class="btn btn-primary" href="{{ url_for('login') }}{% if tenant_slug %}?t={{ tenant_slug }}{% endif %}">Logga in</a>
-      {% endif %}
-    </div>
-  </div>
-</header>
   <main>
     {% with messages = get_flashed_messages() %}
       {% if messages %}
@@ -52,6 +36,9 @@
   </main>
   <footer>
     <p>Prototype av Millyard – multi-tenant MVP.</p>
+  </footer>
+  <footer style="position:fixed; right:10px; bottom:10px; opacity:.6; font-size:.85em;">
+    {{ version }}
   </footer>
 {% if g.user and g.user['role'] in ['admin'] and request.endpoint != 'status_page' %}
   <a class="fab" href="{{ url_for('status_page') }}{% if tenant_slug %}?t={{ tenant_slug }}{% endif %}" aria-label="Öppna Kontroll">

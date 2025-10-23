@@ -95,56 +95,116 @@
     setTimeout(()=>{ btn.disabled=false; btn.textContent='Kontrollera'; }, 3000);
   });
 
-  // --- Enkel QR-skanning (frivilligt): kräver att QR:n innehåller regnumret som text ---
+  // ---- QR-skanning (med fallback) ----
   const scanBtn = document.getElementById('scanBtn');
   const stopBtn = document.getElementById('stopBtn');
   const wrap = document.getElementById('scanWrap');
   const video = document.getElementById('video');
-  let stream, rafId, detector;
+  let stream, rafId, detector, zxingReader;
 
   async function startScan(){
-    if (!('BarcodeDetector' in window)) {
-      alert('QR-skanning stöds inte i denna webbläsare. Ange regnummer manuellt.');
-      return;
-    }
-    try{
-      detector = new BarcodeDetector({ formats: ['qr_code'] });
-      stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
-      video.srcObject = stream;
-      await video.play();
-      wrap.hidden = false;
-      tick();
-    }catch(e){
-      console.error(e);
-      alert('Kunde inte starta kamera. Ange regnummer manuellt.');
-    }
-  }
-  async function tick(){
-    try{
-      const codes = await detector.detect(video);
-      if (codes && codes.length){
-        const payload = (codes[0].rawValue || '').trim().toUpperCase();
-        // hämta första "registreringsliknande" token om länken innehåller mer text
-        const match = payload.match(/[A-ZÅÄÖ]{3}(?:\d{3}|\d{2}[A-ZÅÄÖ])/);
-        if (match){
-          reg.value = match[0];
-          stopScan();
-          form.submit();
-          return;
-        }
+    // Försök native BarcodeDetector först
+    if ('BarcodeDetector' in window) {
+      try {
+        detector = new BarcodeDetector({ formats: ['qr_code'] });
+        await startCamera();
+        tickNative();
+        return;
+      } catch(e) {
+        console.warn('BarcodeDetector error, fall back to ZXing', e);
       }
-    }catch(e){}
-    rafId = requestAnimationFrame(tick);
+    }
+    // Fallback: ZXing via CDN (laddas bara när det behövs)
+    await loadZXing();
+    await startCamera();
+    await startZXing();
   }
+
   function stopScan(){
     wrap.hidden = true;
     cancelAnimationFrame(rafId);
     video.pause();
     if (stream){ stream.getTracks().forEach(t => t.stop()); }
+    if (zxingReader){ try { zxingReader.reset(); } catch(_){} }
+  }
+
+  async function startCamera(){
+    stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+    video.srcObject = stream;
+    await video.play();
+    wrap.hidden = false;
+  }
+
+  // Native-läsning
+  async function tickNative(){
+    try{
+      const codes = await detector.detect(video);
+      if (codes && codes.length){
+        handlePayload(codes[0].rawValue || '');
+        return;
+      }
+    }catch(e){}
+    rafId = requestAnimationFrame(tickNative);
+  }
+
+  // ZXing fallback
+  async function loadZXing(){
+    if (window.ZXingBrowser) return;
+    await new Promise((res, rej)=>{
+      const s = document.createElement('script');
+      s.src = 'https://unpkg.com/@zxing/browser@latest';
+      s.onload = res; s.onerror = rej;
+      document.head.appendChild(s);
+    });
+  }
+
+  async function startZXing(){
+    const { BrowserMultiFormatReader, NotFoundException } = ZXingBrowser;
+    zxingReader = new BrowserMultiFormatReader();
+    // Välj rätt videostream (vi använder redan getUserMedia till <video>)
+    const videoInputDevices = await zxingReader.listVideoInputDevices();
+    const deviceId = (videoInputDevices.find(d => /back|rear/i.test(d.label)) || videoInputDevices[0] || {}).deviceId;
+    // Om vi redan spelar upp video via getUserMedia räcker det att be ZXing läsa från elementet:
+    zxingReader.decodeFromVideoElement(video, (result, err) => {
+      if (result && result.getText){
+        handlePayload(result.getText());
+      } else if (err && !(err instanceof NotFoundException)) {
+        console.warn(err);
+      }
+    }, deviceId);
+  }
+
+  function handlePayload(text){
+    const payload = (text || '').trim().toUpperCase();
+    // Hitta regnr inne i strängen/länken
+    const match = payload.match(/[A-ZÅÄÖ]{3}(?:\d{3}|\d{2}[A-ZÅÄÖ])/);
+    if (match){
+      reg.value = match[0];
+      stopScan();
+      form.submit();
+    } else {
+      // Om QR-koden bara är en länk utan regnr – öppna den i ny flik (valfritt)
+      try {
+        if (/^https?:\/\//i.test(payload)) window.open(payload, '_blank', 'noopener');
+      } catch(_){}
+      toast('QR hittad men inget regnr.');
+    }
   }
 
   scanBtn?.addEventListener('click', startScan);
   stopBtn?.addEventListener('click', stopScan);
+
+  // Små hjälpare
+  function toast(msg){
+    const t = document.createElement('div');
+    t.textContent = msg;
+    t.style.position='fixed'; t.style.bottom='20px'; t.style.left='50%';
+    t.style.transform='translateX(-50%)'; t.style.padding='8px 12px';
+    t.style.background='var(--ink,#111)'; t.style.color='#fff';
+    t.style.borderRadius='10px'; t.style.boxShadow='0 6px 20px rgba(0,0,0,.2)';
+    document.body.appendChild(t);
+    setTimeout(()=>t.remove(), 1600);
+  }
 })();
 </script>
 {% endblock %}
