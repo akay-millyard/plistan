@@ -369,6 +369,35 @@ def resident_new_guest_link():
     return render_template('resident_vehicles.html', household=hh, vehicles=[dict(x) for x in vs],
                            guest_link=guest_link, qr_svg=qr_svg, max_hours=max_hours, max_resident=max_res, tenant_slug=g.tenant['slug'])
 
+@app.get('/admin/billing.csv')
+@role_required('superadmin')
+def admin_billing_csv():
+    # Kräver att en tenant är vald via ?t=slug (precis som admin-sidorna)
+    r = require_tenant_or_redirect()
+    if r: 
+        return r
+
+    db = get_db()
+    month = request.args.get('month') or datetime.datetime.utcnow().strftime("%Y-%m")
+    try:
+        unit_price = float(request.args.get('unit_price') or 0)
+    except ValueError:
+        unit_price = 0.0
+
+    # Enkelt underlag: antal hushåll * enhetspris
+    hh_count = db.execute("SELECT COUNT(*) AS c FROM households WHERE tenant_id=?", (g.tenant['id'],)).fetchone()['c']
+    amount = unit_price * hh_count
+
+    si = StringIO()
+    w = csv.writer(si)
+    w.writerow(['tenant', 'month', 'households', 'unit_price', 'amount'])
+    w.writerow([g.tenant['slug'], month, hh_count, f"{unit_price:.2f}", f"{amount:.2f}"])
+
+    resp = make_response(si.getvalue())
+    resp.headers['Content-Type'] = 'text/csv; charset=utf-8'
+    resp.headers['Content-Disposition'] = f'attachment; filename="billing_{g.tenant["slug"]}_{month}.csv"'
+    return resp
+
 # -------- Kontroll --------
 @app.route('/guest', methods=['GET','POST'])
 def guest_register():
