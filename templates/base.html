@@ -1,5 +1,15 @@
 <!doctype html>
 <html lang="sv">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>P-Listan</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  {% if tenant and tenant['primary_color'] %}
+  <style>:root{ --brand: {{ tenant['primary_color'] }}; }</style>
+  {% endif %}
+</head>
+<body>
 {% if not login_page %}
 <header class="topbar">
   <div class="left">
@@ -15,7 +25,6 @@
   </div>
 </header>
 {% endif %}
-<body>
 <header>
   <div class="header-inner">
     <div class="logo">
