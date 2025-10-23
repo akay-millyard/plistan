@@ -1,10 +1,9 @@
 # -*- coding: utf-8 -*-
-import os, sqlite3, re, secrets, datetime, csv, random, string
-import base64, io
+import os, sqlite3, re, secrets, datetime, csv, random, string, base64, io
 from types import SimpleNamespace
 from flask import Flask, g, render_template, request, redirect, url_for, jsonify, abort, flash, make_response, session
 from werkzeug.security import generate_password_hash, check_password_hash
-import jwt, traceback
+import jwt, qrcode
 from functools import wraps
 
 VERSION = "v3.2.2"
