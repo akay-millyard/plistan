@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 import os, sqlite3, re, secrets, datetime, csv, random, string
+from types import SimpleNamespace
 from io import StringIO, BytesIO
 from flask import Flask, g, render_template, request, redirect, url_for, jsonify, abort, flash, make_response, session
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -7,7 +8,7 @@ import jwt, qrcode
 from qrcode.image.svg import SvgImage
 from functools import wraps
 
-VERSION = "v3.1.0"
+VERSION = "v3.2.0-2025-10-23"
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev-secret-change-me')
@@ -96,7 +97,29 @@ def ensure_superadmin_seed():
     if not email or not pw: return
     db = get_db()
     if not db.execute("SELECT 1 FROM users WHERE email=?", (email,)).fetchone():
-        db.execute("INSERT INTO users (email, pw_hash, role) VALUES (?, ?, 'superadmin')", (email, generate_password_hash(pw))); db.commit()
+        pw_hash = generate_password_hash(pw)
+        db.execute(
+            "INSERT INTO users (email, pw_hash, role) VALUES (?, ?, 'superadmin')",
+            (email, pw_hash),
+        )
+        db.commit()
+
+
+PASSWORD_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789"
+
+
+def hash_password(password):
+    return generate_password_hash(password)
+
+
+def verify_password(plain_password, stored_hash):
+    if not stored_hash:
+        return False
+    return check_password_hash(stored_hash, plain_password)
+
+
+def generate_password(length: int = 12) -> str:
+    return ''.join(secrets.choice(PASSWORD_ALPHABET) for _ in range(length))
 
 def normalize_reg(s):
     if not s: return ''
@@ -114,7 +137,17 @@ def before_every_request():
 
 @app.context_processor
 def inject_globals():
-    return dict(version=VERSION, tenant=g.tenant, tenant_slug=(g.tenant['slug'] if g.tenant else None))
+    tenant = getattr(g, 'tenant', None)
+    tenant_slug = tenant['slug'] if tenant else None
+    user = getattr(g, 'user', None)
+    current_user = SimpleNamespace(**dict(user)) if user else None
+    return dict(
+        version=VERSION,
+        tenant=tenant,
+        tenant_slug=tenant_slug,
+        current_user=current_user,
+        login_page=False,
+    )
 
 def require_tenant_or_redirect():
     if not g.tenant:
@@ -157,6 +190,39 @@ def login():
         flash('Fel e-post eller lösenord.')
     return render_template("auth_login.html", login_page=True)
 
+@app.post('/select-tenant')
+def select_tenant():
+    if not g.user:
+        return redirect(url_for('login'))
+    slug = request.form.get('slug')
+    if not slug:
+        abort(400)
+    # (valfritt) verifiera att g.user har access till just denna tenant
+    db = get_db()
+    t = db.execute("SELECT id FROM tenants WHERE slug=?", (slug,)).fetchone()
+    if not t:
+        abort(404)
+    return _redirect_to_role_start(g.user['role'], slug)
+
+@app.route('/account/password', methods=['GET', 'POST'])
+def account_password():
+    if not g.user:
+        return redirect(url_for('login'))
+    if request.method == 'POST':
+        cur = request.form.get('current') or ''
+        new = request.form.get('new') or ''
+        rep = request.form.get('repeat') or ''
+        if not new or new != rep:
+            return render_template('account_password.html', error='Lösenorden matchar inte.')
+        if not verify_password(cur, g.user['pw_hash']):
+            return render_template('account_password.html', error='Fel nuvarande lösenord.')
+        db = get_db()
+        db.execute("UPDATE users SET pw_hash=? WHERE id=?", (hash_password(new), g.user['id']))
+        db.commit()
+        flash('Lösenord uppdaterat.', 'success')
+        return redirect(url_for('account_password'))
+    return render_template('account_password.html')
+
 @app.get('/logout')
 def logout():
     session.clear(); flash('Utloggad.'); return redirect(url_for('login'))
@@ -169,6 +235,20 @@ def root_dashboard():
     tenants = db.execute("SELECT * FROM tenants ORDER BY created_at DESC").fetchall()
     current_month = datetime.datetime.utcnow().strftime("%Y-%m")
     return render_template('root_dashboard.html', tenants=tenants, current_month=current_month)
+
+
+@app.post('/root/admins/<int:user_id>/reset')
+@role_required('superadmin')
+def root_reset_admin(user_id):
+    db = get_db()
+    u = db.execute("SELECT id, role FROM users WHERE id=?", (user_id,)).fetchone()
+    if not u or u['role'] != 'admin':
+        abort(400)
+    pw = generate_password()
+    db.execute("UPDATE users SET pw_hash=? WHERE id=?", (hash_password(pw), user_id))
+    db.commit()
+    flash(f'Nytt admin-lösenord: {pw} (visa en gång).', 'success')
+    return redirect(url_for('root_dashboard'))
 
 @app.route('/tenants/new', methods=['GET','POST'])
 @role_required('superadmin')
@@ -268,6 +348,51 @@ def admin_settings():
     return render_template('admin_settings.html', tenant=g.tenant,
                            max_guest_hours=getset('max_guest_hours', 24),
                            max_resident_vehicles=getset('max_resident_vehicles', 1))
+
+
+@app.get('/admin/users')
+@role_required('admin')
+def admin_users():
+    r = require_tenant_or_redirect()
+    if r: return r
+    db = get_db()
+    users = db.execute(
+        """
+        SELECT DISTINCT u.id, u.email
+        FROM users u
+        JOIN user_tenants ut ON ut.user_id=u.id
+        WHERE ut.tenant_id=? AND ut.role='resident'
+        ORDER BY u.email
+        """,
+        (g.tenant['id'],),
+    ).fetchall()
+    return render_template('admin_users.html', users=users, tenant=g.tenant)
+
+
+@app.post('/admin/users/<int:user_id>/reset')
+@role_required('admin')
+def admin_reset_user(user_id):
+    r = require_tenant_or_redirect()
+    if r: return r
+    db = get_db()
+    own = db.execute(
+        """
+        SELECT 1 FROM user_tenants
+        WHERE user_id=? AND tenant_id=? AND role='resident'
+        """,
+        (user_id, g.tenant['id']),
+    ).fetchone()
+    if not own:
+        abort(403)
+    pw = generate_password()
+    db.execute(
+        "UPDATE users SET pw_hash=? WHERE id=?",
+        (hash_password(pw), user_id),
+    )
+    db.commit()
+    flash(f'Nytt lösenord: {pw} (visa en gång).', 'success')
+    return redirect(url_for('admin_users') + f'?t={g.tenant["slug"]}')
+
 
 @app.get('/admin/export/vehicles.csv')
 @role_required('admin','superadmin')
